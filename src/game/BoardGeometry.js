@@ -109,3 +109,61 @@ export function getRingTiles(ringNumber) {
       return [];
   }
 }
+
+// Finds the shortest path between startTileId and endTileId on the hex grid
+// Returns an array of tile IDs starting from startTileId to endTileId.
+// Avoids destroyed tiles. Falls back to direct path if cut off.
+export function findGridPath(startTileId, endTileId, destroyedTiles = {}) {
+  const tilesList = getSpiralCoordinates();
+  const tilesMap = {};
+  tilesList.forEach(t => { tilesMap[t.id] = t; });
+
+  const startTile = tilesMap[startTileId];
+  const endTile = tilesMap[endTileId];
+  if (!startTile || !endTile) return [startTileId, endTileId];
+
+  // Helper to get active neighbors of a tile on the hex grid
+  const getNeighbors = (tileId) => {
+    const tile = tilesMap[tileId];
+    if (!tile) return [];
+    
+    const neighbors = [];
+    tilesList.forEach(t => {
+      if (t.id === tileId) return;
+      if (destroyedTiles[t.id]) return; // Skip destroyed tiles
+      
+      // Hex grid distance check (dist === 1 means they are direct neighbors)
+      const dist = (Math.abs(tile.q - t.q) + Math.abs(tile.r - t.r) + Math.abs((tile.q + tile.r) - (t.q + t.r))) / 2;
+      if (dist === 1) {
+        neighbors.push(t.id);
+      }
+    });
+    return neighbors;
+  };
+
+  // BFS Queue: stores paths
+  const queue = [[startTileId]];
+  const visited = { [startTileId]: true };
+
+  while (queue.length > 0) {
+    const path = queue.shift();
+    const current = path[path.length - 1];
+
+    if (current === endTileId) {
+      return path;
+    }
+
+    const neighbors = getNeighbors(current);
+    for (const neighbor of neighbors) {
+      if (!visited[neighbor]) {
+        visited[neighbor] = true;
+        queue.push([...path, neighbor]);
+      }
+    }
+  }
+
+  // Fallback: If BFS fails (e.g. start/end is completely isolated by destroyed tiles),
+  // return direct start/end path to avoid softlocks.
+  return [startTileId, endTileId];
+}
+

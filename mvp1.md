@@ -60,9 +60,9 @@ Tile IDs:
 
 1 → 61
 
-Movement follows one fixed spiral path.
+Movement can go in any direction (both inward and outward) on the hex grid.
 
-Players always move forward toward Tile 61.
+The spiral path layout defines tile IDs (1 to 61) and their starting concentric rings, but players are not forced to follow a single forward direction.
 
 Tile 61 is the center tile.
 
@@ -96,11 +96,7 @@ Next Round
 
 Turn Timer:
 
-10 seconds
-
-If timer expires:
-
-Server automatically rolls.
+No timer. Players manually roll and choose their tiles. No auto-roll.
 
 ---
 
@@ -121,41 +117,26 @@ Possible Values:
 
 ---
 
-# Dice Effects
+# Dice Effects & Manual Selection
 
 ## Roll 1-6
 
-Move forward by rolled value.
-
-Example:
-
-Current Position = 12
-
-Roll = 4
-
-New Position = 16
+Move grid-wise by rolled value. Valid targets at exact grid distance $N$ in any direction (both inward and outward) will highlight.
+- **Ring Constraint**: Valid targets must be in the **same concentric ring** or an **immediate adjacent ring** (one ring inward or outward, i.e., `|targetRing - currentRing| <= 1`). Jumps that skip rings are blocked to keep matches highly tactical.
+- **Auto-Pass**: If no valid target exists at distance $N$ within the allowed rings, the turn automatically passes.
 
 ---
 
 ## Roll 7 (Leap)
 
-Move forward 7 tiles.
-
-For MVP there are no special tiles.
-
-Effectively:
-
-Move +7
+Move grid-wise 7 tiles. Targets must satisfy the same adjacent ring constraints.
 
 ---
 
 ## Roll 8 (Overdrive)
 
-Move forward 8 tiles.
-
-If landing on opponent:
-
-Special bump applies.
+Move grid-wise 8 tiles. Targets must satisfy the same adjacent ring constraints.
+If landing on opponent, special bump (-6 tiles backward along the spiral) applies.
 
 ---
 
@@ -240,7 +221,7 @@ Collapse triggers
 
 At the end of every round:
 
-Server randomly destroys 2 tiles from the current outermost active ring.
+Server randomly destroys 2 tiles from anywhere on the board (any active, undestroyed tiles).
 
 Destroyed tiles remain destroyed forever.
 

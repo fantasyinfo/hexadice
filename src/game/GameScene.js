@@ -1,17 +1,19 @@
 // GameScene.js
 // Renders the board, player tokens, path, and runs step-by-step animations.
+// Updated to support manual grid highlights and click selection.
 
 import Phaser from 'phaser';
-import { getSpiralCoordinates, getRingNumber } from './BoardGeometry';
+import { getSpiralCoordinates, getRingNumber, findGridPath } from './BoardGeometry';
 
 export class GameScene extends Phaser.Scene {
   constructor() {
     super({ key: 'GameScene' });
     this.tiles = [];
-    this.tileObjects = {}; // tileId -> { container, hex, text }
+    this.tileObjects = {}; // tileId -> { container, hex, border, label, highlightGlow }
     this.playerTokens = {}; // 'A', 'B' -> token container
     this.isAnimating = false;
     this.hexSize = 38; // Radius of each hex
+    this.highlightedTileIds = [];
   }
 
   create() {
@@ -41,6 +43,7 @@ export class GameScene extends Phaser.Scene {
 
     // Listen for events from the React component
     this.game.events.on('ROLL_RESULT', (data) => this.handleRollResult(data));
+    this.game.events.on('MOVE_RESULT', (data) => this.handleMoveResult(data));
     this.game.events.on('SYNC_STATE', (data) => this.handleSyncState(data));
 
     // Notify React that Phaser is ready
@@ -99,7 +102,7 @@ export class GameScene extends Phaser.Scene {
       
       // Draw outer hexagon outline
       const border = this.add.graphics();
-      border.lineStyle(2, 0x2d3748, 0.9); // Dark blue-gray border
+      border.lineStyle(2, 0x3f516d, 0.95); // Slightly lighter border to highlight rings
       
       // Draw filled hex
       const hex = this.add.graphics();
@@ -132,7 +135,7 @@ export class GameScene extends Phaser.Scene {
       this.boardContainer.add(container);
 
       // Save references
-      this.tileObjects[tile.id] = { container, hex, border, label };
+      this.tileObjects[tile.id] = { container, hex, border, label, highlightGlow: null };
     });
   }
 
@@ -152,18 +155,18 @@ export class GameScene extends Phaser.Scene {
       // Dark red styling with faint grid lines
       graphics.fillStyle(0x3a0d15, 0.85); // Dark deep red
     } else {
-      // Ring-based colors for gradient space visual depth
+      // Ring-based colors for gradient space visual depth (distinct lighter colors)
       const ring = getRingNumber(tileId);
       if (tileId === 61) {
-        graphics.fillStyle(0x2d1f00, 0.95); // Golden center tile
+        graphics.fillStyle(0x614f27, 0.95); // Bronze/Gold center tile
       } else {
         const colors = [
-          0x141824, // Ring 4
-          0x161c2d, // Ring 3
-          0x1b2238, // Ring 2
-          0x212a45  // Ring 1
+          0x2a364d, // Ring 4
+          0x3f2d57, // Ring 3
+          0x224a54, // Ring 2
+          0x593144  // Ring 1
         ];
-        graphics.fillStyle(colors[4 - ring] || 0x141824, 0.95);
+        graphics.fillStyle(colors[4 - ring] || 0x2a364d, 0.95);
       }
     }
 
@@ -227,7 +230,6 @@ export class GameScene extends Phaser.Scene {
 
   // Offsets players so they do not overlap when standing on the same tile
   getPlayerOffsets(tileId, hasA = true, hasB = true) {
-    // If they occupy the same tile, offset them
     const posA = this.state?.players?.A?.position || tileId;
     const posB = this.state?.players?.B?.position || tileId;
     
@@ -243,10 +245,11 @@ export class GameScene extends Phaser.Scene {
     };
   }
 
-  // Synchronize board without animations (e.g., on restart/init)
+  // Synchronize board without animations
   handleSyncState(serverState) {
     this.state = serverState;
     this.isAnimating = false;
+    this.clearHighlights();
 
     // Redraw all tiles based on destroyed status
     this.tiles.forEach(tile => {
@@ -258,7 +261,7 @@ export class GameScene extends Phaser.Scene {
           tObj.border.lineStyle(2, 0x5a0f1b, 0.8);
           tObj.label.setColor('#5a2d34');
         } else {
-          tObj.border.lineStyle(2, 0x2d3748, 0.9);
+          tObj.border.lineStyle(2, 0x3f516d, 0.95);
           tObj.label.setColor(tile.id === 61 ? '#ffcc00' : '#a0aec0');
         }
       }
@@ -280,7 +283,193 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  // Handle detailed animations based on roll report
+  // Highlights valid target tiles and registers click listeners
+  highlightTiles(tileIds) {
+    this.clearHighlights();
+    this.highlightedTileIds = tileIds;
+
+    const points = [];
+    for (let i = 0; i < 6; i++) {
+      const angle = (Math.PI / 180) * (60 * i - 30);
+      points.push({
+        x: this.hexSize * Math.cos(angle),
+        y: this.hexSize * Math.sin(angle)
+      });
+    }
+
+    tileIds.forEach(tileId => {
+      const tObj = this.tileObjects[tileId];
+      if (!tObj) return;
+
+      // Draw green highlight glow border
+      const glow = this.add.graphics();
+      glow.lineStyle(3, 0x00ffcc, 0.85);
+      glow.fillStyle(0x00ffcc, 0.15); // Transparent green fill
+
+      glow.beginPath();
+      glow.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < 6; i++) {
+        glow.lineTo(points[i].x, points[i].y);
+      }
+      glow.closePath();
+      glow.fillPath();
+      glow.strokePath();
+
+      tObj.container.add(glow);
+      tObj.highlightGlow = glow;
+
+      // Make container interactive with Circle hit area
+      tObj.container.setInteractive(new Phaser.Geom.Circle(0, 0, this.hexSize), Phaser.Geom.Circle.Contains);
+      
+      tObj.container.on('pointerover', () => {
+        glow.clear();
+        glow.lineStyle(4, 0x00ffcc, 1);
+        glow.fillStyle(0x00ffcc, 0.35); // Brighter green fill on hover
+        glow.beginPath();
+        glow.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < 6; i++) {
+          glow.lineTo(points[i].x, points[i].y);
+        }
+        glow.closePath();
+        glow.fillPath();
+        glow.strokePath();
+        this.input.setDefaultCursor('pointer');
+
+        // Draw guide path to show counting mechanics
+        const activePlayer = this.state.currentTurn;
+        const currentPos = this.state.players[activePlayer].position;
+        const path = findGridPath(currentPos, tileId, this.state.destroyedTiles);
+        this.drawGuidePath(path);
+      });
+
+      tObj.container.on('pointerout', () => {
+        glow.clear();
+        glow.lineStyle(3, 0x00ffcc, 0.85);
+        glow.fillStyle(0x00ffcc, 0.15);
+        glow.beginPath();
+        glow.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < 6; i++) {
+          glow.lineTo(points[i].x, points[i].y);
+        }
+        glow.closePath();
+        glow.fillPath();
+        glow.strokePath();
+        this.input.setDefaultCursor('default');
+
+        // Clear path guide
+        this.clearGuidePath();
+      });
+
+      tObj.container.on('pointerdown', () => {
+        this.input.setDefaultCursor('default');
+        this.selectTargetTile(tileId);
+      });
+    });
+  }
+
+  selectTargetTile(tileId) {
+    this.clearHighlights();
+    this.clearGuidePath();
+    this.game.events.emit('TILE_SELECTED', tileId);
+  }
+
+  clearHighlights() {
+    this.highlightedTileIds = [];
+    this.clearGuidePath();
+    Object.keys(this.tileObjects).forEach(tileId => {
+      const tObj = this.tileObjects[tileId];
+      if (tObj.highlightGlow) {
+        tObj.highlightGlow.destroy();
+        tObj.highlightGlow = null;
+      }
+      tObj.container.disableInteractive();
+      tObj.container.removeAllListeners();
+    });
+  }
+
+  // Draw arrow / text guide line path to visualize counting path
+  drawGuidePath(path) {
+    this.clearGuidePath();
+    
+    this.guideGraphics = this.add.graphics();
+    this.boardContainer.add(this.guideGraphics);
+    this.guideTexts = [];
+
+    // Line style: Neon cyan path line
+    this.guideGraphics.lineStyle(4, 0x00ffcc, 0.85);
+
+    // Draw the connections
+    this.guideGraphics.beginPath();
+    path.forEach((tileId, index) => {
+      const tile = this.tiles[tileId - 1];
+      if (index === 0) {
+        this.guideGraphics.moveTo(tile.x, tile.y);
+      } else {
+        this.guideGraphics.lineTo(tile.x, tile.y);
+      }
+    });
+    this.guideGraphics.strokePath();
+
+    // Draw step circles and directional arrows to show counting mechanics
+    path.forEach((tileId, index) => {
+      if (index === 0) return; // Skip starting position
+      const tile = this.tiles[tileId - 1];
+
+      // Draw path node indicator
+      this.guideGraphics.fillStyle(0x00ffcc, 0.9);
+      this.guideGraphics.fillCircle(tile.x, tile.y, 8);
+
+      // Draw directional arrow on the segment
+      const prevTile = this.tiles[path[index - 1] - 1];
+      const angle = Phaser.Math.Angle.Between(prevTile.x, prevTile.y, tile.x, tile.y);
+      
+      const midX = (prevTile.x + tile.x) / 2;
+      const midY = (prevTile.y + tile.y) / 2;
+      
+      this.guideGraphics.fillStyle(0x00ffcc, 1);
+      this.guideGraphics.beginPath();
+      
+      const arrowSize = 6;
+      const x1 = midX + arrowSize * Math.cos(angle);
+      const y1 = midY + arrowSize * Math.sin(angle);
+      const x2 = midX + arrowSize * Math.cos(angle + Math.PI * 0.8);
+      const y2 = midY + arrowSize * Math.sin(angle + Math.PI * 0.8);
+      const x3 = midX + arrowSize * Math.cos(angle - Math.PI * 0.8);
+      const y3 = midY + arrowSize * Math.sin(angle - Math.PI * 0.8);
+      
+      this.guideGraphics.moveTo(x1, y1);
+      this.guideGraphics.lineTo(x2, y2);
+      this.guideGraphics.lineTo(x3, y3);
+      this.guideGraphics.closePath();
+      this.guideGraphics.fillPath();
+
+      // Draw numerical step count badge
+      const stepText = this.add.text(tile.x, tile.y - 18, index.toString(), {
+        fontFamily: '"Courier New", Courier, monospace',
+        fontSize: '11px',
+        fontWeight: 'bold',
+        color: '#00ffcc',
+        backgroundColor: '#05070c',
+        padding: { x: 3, y: 1 }
+      }).setOrigin(0.5);
+      
+      this.guideTexts.push(stepText);
+      this.boardContainer.add(stepText);
+    });
+  }
+
+  clearGuidePath() {
+    if (this.guideGraphics) {
+      this.guideGraphics.destroy();
+      this.guideGraphics = null;
+    }
+    if (this.guideTexts) {
+      this.guideTexts.forEach(t => t.destroy());
+      this.guideTexts = [];
+    }
+  }
+
+  // Handle rolling visual feedback (Phase 1)
   async handleRollResult(data) {
     const { state, animationReport } = data;
     this.state = state;
@@ -290,7 +479,52 @@ export class GameScene extends Phaser.Scene {
     // 1. Play D8 Roll Animation (Floating Text / Shake)
     await this.animateDiceRoll(animationReport);
 
-    // 2. Play Main Player Move Animation (Tile-by-Tile)
+    if (animationReport.type === 'pass_phase') {
+      // Show pass splash text
+      const passText = this.add.text(0, -100, 'NO VALID MOVES! PASSING...', {
+        fontFamily: 'Impact, Arial, sans-serif',
+        fontSize: '24px',
+        color: '#ffaa00',
+        stroke: '#000000',
+        strokeThickness: 4
+      }).setOrigin(0.5);
+      this.boardContainer.add(passText);
+
+      this.tweens.add({
+        targets: passText,
+        y: passText.y - 35,
+        alpha: 0,
+        delay: 1000,
+        duration: 800,
+        onComplete: () => passText.destroy()
+      });
+
+      // Play Collapse Animations if B passes
+      if (animationReport.collapsedTiles.length > 0) {
+        await this.animateCollapse(animationReport);
+      }
+
+      this.handleSyncState(state);
+      this.isAnimating = false;
+      this.game.events.emit('ANIMATION_COMPLETE');
+    } else {
+      // Highlight valid targets
+      this.highlightTiles(animationReport.validTargets);
+      this.isAnimating = false;
+      this.game.events.emit('ROLL_ANIMATION_COMPLETE');
+    }
+  }
+
+  // Handle detailed movements after manual selection (Phase 2)
+  async handleMoveResult(data) {
+    const { state, animationReport } = data;
+    this.state = state;
+    this.isAnimating = true;
+    this.game.events.emit('ANIMATION_START');
+
+    this.clearHighlights();
+
+    // 2. Play Main Player Move Animation (Grid BFS Walking)
     await this.animatePlayerMove(animationReport);
 
     // 3. Play Bumping Animation (if any)
@@ -303,7 +537,6 @@ export class GameScene extends Phaser.Scene {
       await this.animateCollapse(animationReport);
     }
 
-    // Update visibility and positions to absolute final sync
     this.handleSyncState(state);
 
     // 5. Check Game Over
@@ -320,7 +553,6 @@ export class GameScene extends Phaser.Scene {
     return new Promise((resolve) => {
       const activePlayerToken = this.playerTokens[report.playerId];
       
-      // Floating text near player token
       const rollText = this.add.text(activePlayerToken.x, activePlayerToken.y - 30, '🎲 Rolling...', {
         fontFamily: '"Courier New", Courier, monospace',
         fontSize: '14px',
@@ -332,7 +564,6 @@ export class GameScene extends Phaser.Scene {
       
       this.boardContainer.add(rollText);
 
-      // Rapidly change numbers to simulate dice rolling
       let rollTicks = 0;
       const rollInterval = this.time.addEvent({
         delay: 60,
@@ -343,7 +574,6 @@ export class GameScene extends Phaser.Scene {
             const randVal = Phaser.Math.Between(1, 8);
             rollText.setText(`🎲 ${randVal}`);
           } else {
-            // Settled on actual roll
             let resultString = `🎲 ${report.roll}`;
             if (report.isOverdrive) {
               resultString = `🔥 OVERDRIVE D8! (${report.roll})`;
@@ -354,7 +584,6 @@ export class GameScene extends Phaser.Scene {
             }
             rollText.setText(resultString);
 
-            // Animate scale up and fade out
             this.tweens.add({
               targets: rollText,
               y: rollText.y - 25,
@@ -373,7 +602,7 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  // Walk tile-by-tile along the spiral path
+  // Walk step-by-step along the BFS path on the grid
   animatePlayerMove(report) {
     return new Promise((resolve) => {
       const pId = report.playerId;
@@ -386,11 +615,8 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
-      // Generate step-by-step positions
-      const stepTiles = [];
-      for (let i = startPos; i <= endPos; i++) {
-        stepTiles.push(this.tiles[i - 1]);
-      }
+      // BFS Pathfinder to get actual grid-based step-by-step path!
+      const path = findGridPath(startPos, endPos, this.state.destroyedTiles);
 
       // Create tween chain
       let chain = this.tweens.add({
@@ -398,11 +624,11 @@ export class GameScene extends Phaser.Scene {
         duration: 0
       });
 
-      stepTiles.forEach((tile, index) => {
-        if (index === 0) return; // Skip starting tile since player is already there
+      path.forEach((tileId, index) => {
+        if (index === 0) return; // Skip starting tile
+        const tile = this.tiles[tileId - 1];
         
-        // Offset if they land on the same tile (only matters at the very end of the movement)
-        const isLastStep = index === stepTiles.length - 1;
+        const isLastStep = index === path.length - 1;
         const offsets = isLastStep ? this.getPlayerOffsets(tile.id) : { A: { x:0, y:0 }, B: { x:0, y:0 } };
         const offset = offsets[pId];
 
@@ -410,15 +636,11 @@ export class GameScene extends Phaser.Scene {
           targets: token,
           x: tile.x + offset.x,
           y: tile.y + offset.y,
-          duration: 180, // Time per step (fast but distinct)
+          duration: 220, // Grid walk speed
           ease: 'Quad.easeInOut',
-          delay: 20,
+          delay: 30,
           onComplete: () => {
             if (isLastStep) {
-              // Check if player fell into abyss on landing
-              if (report.playerEliminatedByAbyss) {
-                this.playEliminationEffect(token, "ABYSS!");
-              }
               resolve();
             }
           }
@@ -435,7 +657,7 @@ export class GameScene extends Phaser.Scene {
       const startPos = report.startPositions[opponentId];
       const endPos = report.endPositions[opponentId];
 
-      // Generate intermediate step positions for smooth backslide
+      // Opponents still slide backward along the fixed spiral line
       const stepTiles = [];
       for (let i = startPos; i >= endPos; i--) {
         stepTiles.push(this.tiles[i - 1]);
@@ -446,7 +668,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
-      // Camera shake on initial hit
+      // Camera shake
       this.cameras.main.shake(150, 0.012);
 
       // Combat text popup
@@ -483,7 +705,7 @@ export class GameScene extends Phaser.Scene {
           targets: opponentToken,
           x: tile.x + offset.x,
           y: tile.y + offset.y,
-          duration: 120, // Slide backward slightly faster
+          duration: 120, // Slide back speed
           ease: 'Quad.easeOut',
           onComplete: () => {
             if (isLastStep) {
@@ -540,7 +762,6 @@ export class GameScene extends Phaser.Scene {
           duration: 600,
           onComplete: () => {
             flashGraphic.destroy();
-            // Restyle tile to destroyed dark red color
             this.styleTile(tObj.hex, tileId, true);
             tObj.border.lineStyle(2, 0x5a0f1b, 0.8);
             tObj.border.strokePath();
@@ -549,7 +770,6 @@ export class GameScene extends Phaser.Scene {
             // Check if players are standing on this tile and play elimination
             report.eliminated.forEach(pId => {
               const token = this.playerTokens[pId];
-              // Find if the token is close to this tile's coordinates
               const dist = Phaser.Math.Distance.Between(token.x, token.y, this.tiles[tileId-1].x, this.tiles[tileId-1].y);
               if (dist < 10) {
                 this.playEliminationEffect(token, "COLLAPSED!");
@@ -558,7 +778,6 @@ export class GameScene extends Phaser.Scene {
 
             count++;
             if (count === collapsedIds.length) {
-              // Give extra time for player elimination animations to show
               this.time.delayedCall(400, () => resolve());
             }
           }
@@ -603,7 +822,7 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  // Victory dynamic title splash
+  // Victory banner splash
   playVictorySplash(winner) {
     const { width, height } = this.scale;
 
@@ -633,7 +852,6 @@ export class GameScene extends Phaser.Scene {
       strokeThickness: 5
     }).setOrigin(0.5);
 
-    // Zoom and fade
     txt.setScale(0.1);
     this.tweens.add({
       targets: txt,
@@ -643,7 +861,6 @@ export class GameScene extends Phaser.Scene {
       ease: 'Back.easeOut'
     });
 
-    // Remove victory splash after 3 seconds or on restart event
     this.game.events.once('SYNC_STATE', () => {
       banner.destroy();
       txt.destroy();

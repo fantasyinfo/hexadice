@@ -1,8 +1,21 @@
 // GameServer.js
 // Authoritative Game Server Simulation for HexaDrop MVP v0.1.
-// All gameplay calculations are performed here.
+// Updated to support manual grid highlight and selection (no auto-movement).
 
-import { getRingTiles, getRingNumber } from './BoardGeometry';
+import { getRingTiles, getRingNumber, getSpiralCoordinates } from './BoardGeometry';
+
+// Precalculate tile coordinates for grid distance calculations
+const TILE_COORDINATES = {};
+getSpiralCoordinates().forEach(tile => {
+  TILE_COORDINATES[tile.id] = { q: tile.q, r: tile.r };
+});
+
+function getGridDistance(id1, id2) {
+  const t1 = TILE_COORDINATES[id1];
+  const t2 = TILE_COORDINATES[id2];
+  if (!t1 || !t2) return 999;
+  return (Math.abs(t1.q - t2.q) + Math.abs(t1.r - t2.r) + Math.abs((t1.q + t1.r) - (t2.q + t2.r))) / 2;
+}
 
 export class GameServer {
   constructor() {
@@ -19,13 +32,13 @@ export class GameServer {
       activeRing: 4,      // Outermost ring with active tiles
       currentTurn: 'A',   // 'A' or 'B'
       round: 1,
-      turnTimer: 10,      // 10 seconds per turn
       winner: null,       // 'A', 'B', 'Draw', or null
       isGameOver: false,
+      activeRoll: null,   // { roll, isOverdrive, isLeap, movement, validTargets }
       combatLog: []       // { id, text, type, round, turn }
     };
     this.logCounter = 0;
-    this.addLog('Game started! Both players on Tile 1.', 'system');
+    this.addLog('Game started! Both players on Tile 1. Click Roll to start.', 'system');
   }
 
   addLog(text, type = 'system') {
@@ -43,21 +56,7 @@ export class GameServer {
     return JSON.parse(JSON.stringify(this.state));
   }
 
-  // Ticks the timer down by 1 second.
-  // Returns a state sync payload. If timer hits 0, auto-rolls for current turn.
-  tickTimer() {
-    if (this.state.isGameOver) return { state: this.getState() };
-
-    this.state.turnTimer--;
-    if (this.state.turnTimer <= 0) {
-      this.addLog(`Timer expired! Server auto-rolling for Player ${this.state.currentTurn}.`, 'warning');
-      return this.rollDice(this.state.currentTurn);
-    }
-
-    return { state: this.getState() };
-  }
-
-  // Authoritative Dice Roll
+  // Authoritative Dice Roll (Phase 1)
   rollDice(playerId, forcedRoll = null) {
     if (this.state.isGameOver) {
       return { state: this.getState(), error: 'Game is already over' };
@@ -67,13 +66,17 @@ export class GameServer {
       return { state: this.getState(), error: 'Not your turn' };
     }
 
+    if (this.state.activeRoll) {
+      return { state: this.getState(), error: 'Already rolled. Select a tile to move.' };
+    }
+
     const player = this.state.players[playerId];
     const opponentId = playerId === 'A' ? 'B' : 'A';
     const opponent = this.state.players[opponentId];
 
     // 1. Roll D8
     const roll = forcedRoll !== null ? forcedRoll : Math.floor(Math.random() * 8) + 1;
-    let movement = roll; // For 1-6, move by roll
+    let movement = roll; 
     let isLeap = false;
     let isOverdrive = false;
 
@@ -87,39 +90,126 @@ export class GameServer {
 
     this.addLog(`Player ${playerId} rolled a ${roll}! (${isOverdrive ? 'Overdrive!' : isLeap ? 'Leap!' : 'Move ' + movement})`, 'roll');
 
-    // State changes to track for animation report
+    // 2. Calculate valid target tiles (any direction, active, grid distance === movement, same/adjacent ring)
+    const validTargets = [];
+    const currentPos = player.position;
+    const currentRing = getRingNumber(currentPos);
+
+    for (let targetId = 1; targetId <= 61; targetId++) {
+      if (targetId === currentPos) continue;
+      if (this.state.destroyedTiles[targetId]) continue; // Skip destroyed tiles
+      
+      const targetRing = getRingNumber(targetId);
+      if (Math.abs(targetRing - currentRing) > 1) continue; // Same ring or adjacent ring only
+
+      const dist = getGridDistance(currentPos, targetId);
+      if (dist === movement) {
+        validTargets.push(targetId);
+      }
+    }
+
+    // 3. Handle case where no moves are valid
+    if (validTargets.length === 0) {
+      this.addLog(`No valid tiles at distance ${movement} in adjacent rings for Player ${playerId}! Turn passed.`, 'warning');
+      
+      // Auto-pass turn
+      let collapsedTilesThisTurn = [];
+      const eliminatedThisTurn = [];
+
+      if (this.state.currentTurn === 'A') {
+        this.state.currentTurn = 'B';
+      } else {
+        // Player B ends -> trigger collapse
+        const collapseReport = this.triggerCollapse();
+        collapsedTilesThisTurn = collapseReport.collapsedTiles;
+        collapseReport.eliminated.forEach(pId => eliminatedThisTurn.push(pId));
+
+        this.checkWinConditions();
+
+        if (!this.state.isGameOver) {
+          this.state.currentTurn = 'A';
+          this.state.round++;
+          this.addLog(`--- Round ${this.state.round} Starts ---`, 'system');
+        }
+      }
+
+      return {
+        state: this.getState(),
+        animationReport: {
+          roll,
+          isOverdrive,
+          isLeap,
+          playerId,
+          validTargets: [],
+          type: 'pass_phase',
+          collapsedTiles: collapsedTilesThisTurn,
+          eliminated: eliminatedThisTurn
+        }
+      };
+    }
+
+    // 4. Save active roll state
+    this.state.activeRoll = {
+      roll,
+      isOverdrive,
+      isLeap,
+      movement,
+      validTargets
+    };
+
+    return {
+      state: this.getState(),
+      animationReport: {
+        roll,
+        isOverdrive,
+        isLeap,
+        playerId,
+        validTargets,
+        type: 'roll_phase'
+      }
+    };
+  }
+
+  // Authoritative Tile Selection & Movement Resolution (Phase 2)
+  selectTile(playerId, targetTileId) {
+    if (this.state.isGameOver) {
+      return { state: this.getState(), error: 'Game is already over' };
+    }
+
+    if (playerId !== this.state.currentTurn) {
+      return { state: this.getState(), error: 'Not your turn' };
+    }
+
+    if (!this.state.activeRoll) {
+      return { state: this.getState(), error: 'Must roll dice first' };
+    }
+
+    if (!this.state.activeRoll.validTargets.includes(targetTileId)) {
+      return { state: this.getState(), error: 'Invalid target tile selection' };
+    }
+
+    const player = this.state.players[playerId];
+    const opponentId = playerId === 'A' ? 'B' : 'A';
+    const opponent = this.state.players[opponentId];
+
     const startPosA = this.state.players.A.position;
     const startPosB = this.state.players.B.position;
-    
+
     let bumpOccurred = false;
     let bumpDistance = 0;
     let bumpedIntoAbyss = false;
     const eliminatedThisTurn = [];
     let collapsedTilesThisTurn = [];
 
-    // 2. Compute New Position
-    const origPosition = player.position;
-    let newPosition = origPosition + movement;
-    if (newPosition > 61) {
-      newPosition = 61;
-    }
+    // 1. Move player to target
+    player.position = targetTileId;
+    this.addLog(`Player ${playerId} moved to Tile ${targetTileId}.`, 'system');
 
-    // Check if player landed on a destroyed tile (Abyss Rule)
-    let playerEliminatedByAbyss = false;
-    if (this.state.destroyedTiles[newPosition]) {
-      player.isAlive = false;
-      playerEliminatedByAbyss = true;
-      eliminatedThisTurn.push(playerId);
-      this.addLog(`Player ${playerId} landed on destroyed Tile ${newPosition} and fell into the Abyss!`, 'elimination');
-    }
-
-    player.position = newPosition;
-
-    // 3. Compute Bump if they land on opponent and player is still alive
-    if (player.isAlive && newPosition === opponent.position) {
+    // 2. Perform bump if landing on opponent
+    if (targetTileId === opponent.position) {
       bumpOccurred = true;
-      bumpDistance = isOverdrive ? 6 : 3;
-      
+      bumpDistance = this.state.activeRoll.isOverdrive ? 6 : 3;
+
       const opponentOrigPos = opponent.position;
       let opponentNewPos = opponentOrigPos - bumpDistance;
       if (opponentNewPos < 1) {
@@ -128,7 +218,6 @@ export class GameServer {
 
       this.addLog(`BUMP! Player ${playerId} landed on Player ${opponentId}. Opponent knocked back -${bumpDistance} tiles.`, 'bump');
 
-      // Check if bumped opponent lands on a destroyed tile (Abyss Rule)
       if (this.state.destroyedTiles[opponentNewPos]) {
         opponent.isAlive = false;
         opponent.position = opponentNewPos;
@@ -140,34 +229,32 @@ export class GameServer {
       }
     }
 
+    // 3. Clear active roll
+    this.state.activeRoll = null;
+
     // 4. Update Win Condition
     this.checkWinConditions();
 
     // 5. Phase Transition
     if (!this.state.isGameOver) {
       if (this.state.currentTurn === 'A') {
-        // Switch to Player B
         this.state.currentTurn = 'B';
-        this.state.turnTimer = 10;
       } else {
-        // Player B finishes -> Round Ends -> Collapse Phase -> Next Round
+        // Player B finished -> Collapse Phase -> Next Round
         const collapseReport = this.triggerCollapse();
         collapsedTilesThisTurn = collapseReport.collapsedTiles;
-        
-        // Add collapse eliminations
+
         collapseReport.eliminated.forEach(pId => {
           if (!eliminatedThisTurn.includes(pId)) {
             eliminatedThisTurn.push(pId);
           }
         });
 
-        // Double check win conditions after collapse
         this.checkWinConditions();
 
         if (!this.state.isGameOver) {
           this.state.currentTurn = 'A';
           this.state.round++;
-          this.state.turnTimer = 10;
           this.addLog(`--- Round ${this.state.round} Starts ---`, 'system');
         }
       }
@@ -176,10 +263,8 @@ export class GameServer {
     return {
       state: this.getState(),
       animationReport: {
-        roll,
-        isOverdrive,
-        isLeap,
         playerId,
+        targetTileId,
         startPositions: { A: startPosA, B: startPosB },
         endPositions: { A: this.state.players.A.position, B: this.state.players.B.position },
         bump: bumpOccurred ? {
@@ -187,9 +272,9 @@ export class GameServer {
           distance: bumpDistance,
           intoAbyss: bumpedIntoAbyss
         } : null,
-        playerEliminatedByAbyss,
         eliminated: eliminatedThisTurn,
-        collapsedTiles: collapsedTilesThisTurn
+        collapsedTiles: collapsedTilesThisTurn,
+        type: 'move_phase'
       }
     };
   }
@@ -199,40 +284,32 @@ export class GameServer {
     const collapsedTiles = [];
     const eliminated = [];
 
-    // Find active tiles in the outermost ring
-    let activeTilesInRing = [];
-    while (this.state.activeRing >= 0) {
-      const ringTiles = getRingTiles(this.state.activeRing);
-      activeTilesInRing = ringTiles.filter(tileId => !this.state.destroyedTiles[tileId]);
-      
-      if (activeTilesInRing.length > 0) {
-        break; // Found the outermost active ring
+    // Find all active tiles on the entire board
+    const activeTiles = [];
+    for (let id = 1; id <= 61; id++) {
+      if (!this.state.destroyedTiles[id]) {
+        activeTiles.push(id);
       }
-      this.state.activeRing--; // Move to next inner ring if current is fully destroyed
     }
 
-    if (activeTilesInRing.length > 0) {
-      this.addLog(`Collapse Phase: Collapsing active tiles in Ring ${this.state.activeRing}...`, 'collapse');
+    if (activeTiles.length > 0) {
+      this.addLog(`Collapse Phase: Collapsing active tiles...`, 'collapse');
       
-      // Determine how many tiles to collapse (up to 2)
-      const collapseCount = Math.min(2, activeTilesInRing.length);
-      
-      // Randomly pick unique tiles
+      const collapseCount = Math.min(2, activeTiles.length);
       const selectedTiles = [];
-      const tempActiveList = [...activeTilesInRing];
+      const tempActiveList = [...activeTiles];
       for (let i = 0; i < collapseCount; i++) {
         const randIndex = Math.floor(Math.random() * tempActiveList.length);
         const tileId = tempActiveList.splice(randIndex, 1)[0];
         selectedTiles.push(tileId);
       }
 
-      // Mark selected tiles as destroyed
       selectedTiles.forEach(tileId => {
         this.state.destroyedTiles[tileId] = true;
         collapsedTiles.push(tileId);
-        this.addLog(`Tile ${tileId} collapsed and is destroyed forever!`, 'collapse');
+        const ring = getRingNumber(tileId);
+        this.addLog(`Tile ${tileId} (Ring ${ring}) collapsed and is destroyed forever!`, 'collapse');
         
-        // Check if players are standing on this tile
         Object.keys(this.state.players).forEach(pId => {
           const player = this.state.players[pId];
           if (player.isAlive && player.position === tileId) {
@@ -242,13 +319,6 @@ export class GameServer {
           }
         });
       });
-
-      // Recalculate active tiles in this ring to see if we should decrement the active ring
-      const remainingActive = activeTilesInRing.filter(tileId => !this.state.destroyedTiles[tileId]);
-      if (remainingActive.length === 0) {
-        this.addLog(`Ring ${this.state.activeRing} is now completely destroyed!`, 'collapse');
-        this.state.activeRing--;
-      }
     }
 
     return {
