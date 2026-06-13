@@ -480,23 +480,38 @@ export class GameScene extends Phaser.Scene {
     await this.animateDiceRoll(animationReport);
 
     if (animationReport.type === 'pass_phase') {
-      // Show pass splash text
-      const passText = this.add.text(0, -100, 'NO VALID MOVES! PASSING...', {
+      // Show dice roll first, then reason
+      const rollLabel = animationReport.isOverdrive
+        ? `🎲 Overdrive! (${animationReport.roll})`
+        : animationReport.isLeap
+          ? `🎲 Leap! (7)`
+          : `🎲 Rolled ${animationReport.roll}`;
+
+      const rollSplash = this.add.text(0, -80, rollLabel, {
         fontFamily: 'Impact, Arial, sans-serif',
-        fontSize: '24px',
-        color: '#ffaa00',
+        fontSize: '22px',
+        color: '#ffffff',
         stroke: '#000000',
         strokeThickness: 4
+      }).setOrigin(0.5);
+      this.boardContainer.add(rollSplash);
+
+      const passText = this.add.text(0, -50, `⚠️ No valid moves — turn passed!`, {
+        fontFamily: 'Impact, Arial, sans-serif',
+        fontSize: '18px',
+        color: '#ffaa00',
+        stroke: '#000000',
+        strokeThickness: 3
       }).setOrigin(0.5);
       this.boardContainer.add(passText);
 
       this.tweens.add({
-        targets: passText,
-        y: passText.y - 35,
+        targets: [rollSplash, passText],
+        y: '-=40',
         alpha: 0,
-        delay: 1000,
-        duration: 800,
-        onComplete: () => passText.destroy()
+        delay: 1200,
+        duration: 900,
+        onComplete: () => { rollSplash.destroy(); passText.destroy(); }
       });
 
       // Play Collapse Animations if B passes
@@ -657,10 +672,12 @@ export class GameScene extends Phaser.Scene {
       const startPos = report.startPositions[opponentId];
       const endPos = report.endPositions[opponentId];
 
-      // Opponents still slide backward along the fixed spiral line
+      // Build step-by-step tile path walking backward by tile ID.
+      // This matches exactly how the server walked (step by step, stopping at destroyed/edge).
       const stepTiles = [];
       for (let i = startPos; i >= endPos; i--) {
-        stepTiles.push(this.tiles[i - 1]);
+        const tile = this.tiles[i - 1];
+        if (tile) stepTiles.push(tile);
       }
 
       if (stepTiles.length <= 1) {

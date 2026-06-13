@@ -167,3 +167,45 @@ export function findGridPath(startTileId, endTileId, destroyedTiles = {}) {
   return [startTileId, endTileId];
 }
 
+// Returns the BFS shortest walkable distance between two tiles, respecting destroyed tiles.
+// Returns 999 if the target is unreachable (completely surrounded by destroyed tiles).
+// This is the CORRECT distance for valid move calculation — it matches actual step count,
+// unlike axial hex distance which ignores destroyed tiles and can produce shorter "phantom" paths.
+export function getBfsDistance(startTileId, endTileId, destroyedTiles = {}) {
+  if (startTileId === endTileId) return 0;
+
+  const tilesList = getSpiralCoordinates();
+  const tilesMap = {};
+  tilesList.forEach(t => { tilesMap[t.id] = t; });
+
+  // Helper to get active hex neighbors
+  const getNeighbors = (tileId) => {
+    const tile = tilesMap[tileId];
+    if (!tile) return [];
+    const neighbors = [];
+    tilesList.forEach(t => {
+      if (t.id === tileId) return;
+      if (destroyedTiles[t.id]) return;
+      const dist = (Math.abs(tile.q - t.q) + Math.abs(tile.r - t.r) + Math.abs((tile.q + tile.r) - (t.q + t.r))) / 2;
+      if (dist === 1) neighbors.push(t.id);
+    });
+    return neighbors;
+  };
+
+  // BFS for shortest distance (no full path tracking needed — faster)
+  const visited = { [startTileId]: true };
+  const queue = [{ id: startTileId, dist: 0 }];
+
+  while (queue.length > 0) {
+    const { id, dist } = queue.shift();
+    for (const neighbor of getNeighbors(id)) {
+      if (neighbor === endTileId) return dist + 1;
+      if (!visited[neighbor]) {
+        visited[neighbor] = true;
+        queue.push({ id: neighbor, dist: dist + 1 });
+      }
+    }
+  }
+
+  return 999; // Unreachable
+}

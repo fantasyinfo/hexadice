@@ -2,20 +2,12 @@
 // Authoritative Game Server Simulation for HexaDrop MVP v0.1.
 // Updated to support manual grid highlight and selection (no auto-movement).
 
-import { getRingTiles, getRingNumber, getSpiralCoordinates } from './BoardGeometry';
+import { getRingTiles, getRingNumber, getBfsDistance } from './BoardGeometry';
 
-// Precalculate tile coordinates for grid distance calculations
-const TILE_COORDINATES = {};
-getSpiralCoordinates().forEach(tile => {
-  TILE_COORDINATES[tile.id] = { q: tile.q, r: tile.r };
-});
-
-function getGridDistance(id1, id2) {
-  const t1 = TILE_COORDINATES[id1];
-  const t2 = TILE_COORDINATES[id2];
-  if (!t1 || !t2) return 999;
-  return (Math.abs(t1.q - t2.q) + Math.abs(t1.r - t2.r) + Math.abs((t1.q + t1.r) - (t2.q + t2.r))) / 2;
-}
+// NOTE: We intentionally use getBfsDistance (BFS through active tiles) instead of the old
+// axial hex distance formula. Axial distance ignores destroyed tiles and can produce shorter
+// "phantom" paths — e.g. roll 4 but target is 5 real steps away because 1 tile was destroyed.
+// getBfsDistance respects destroyed tiles and always matches actual movement step count.
 
 export class GameServer {
   constructor() {
@@ -23,10 +15,18 @@ export class GameServer {
   }
 
   reset() {
+    // Pick 2 different random starting tiles from Ring 4 (tiles 1–24)
+    const ring4Tiles = Array.from({ length: 24 }, (_, i) => i + 1);
+    const idxA = Math.floor(Math.random() * ring4Tiles.length);
+    let idxB;
+    do { idxB = Math.floor(Math.random() * ring4Tiles.length); } while (idxB === idxA);
+    const startA = ring4Tiles[idxA];
+    const startB = ring4Tiles[idxB];
+
     this.state = {
       players: {
-        A: { id: 'A', name: 'Player A', position: 1, isAlive: true },
-        B: { id: 'B', name: 'Player B', position: 1, isAlive: true }
+        A: { id: 'A', name: 'Player A', position: startA, isAlive: true },
+        B: { id: 'B', name: 'Player B', position: startB, isAlive: true }
       },
       destroyedTiles: {}, // tileId (string) -> true
       activeRing: 4,      // Outermost ring with active tiles
@@ -38,7 +38,7 @@ export class GameServer {
       combatLog: []       // { id, text, type, round, turn }
     };
     this.logCounter = 0;
-    this.addLog('Game started! Both players on Tile 1. Click Roll to start.', 'system');
+    this.addLog(`Game started! Player A on Tile ${startA}, Player B on Tile ${startB}. Click Roll to start.`, 'system');
   }
 
   addLog(text, type = 'system') {
@@ -102,7 +102,9 @@ export class GameServer {
       const targetRing = getRingNumber(targetId);
       if (Math.abs(targetRing - currentRing) > 1) continue; // Same ring or adjacent ring only
 
-      const dist = getGridDistance(currentPos, targetId);
+      // Use BFS distance through active tiles — this matches the actual steps a player
+      // must walk, correctly treating destroyed tiles as impassable obstacles.
+      const dist = getBfsDistance(currentPos, targetId, this.state.destroyedTiles);
       if (dist === movement) {
         validTargets.push(targetId);
       }
@@ -208,26 +210,59 @@ export class GameServer {
     // 2. Perform bump if landing on opponent
     if (targetTileId === opponent.position) {
       bumpOccurred = true;
-      bumpDistance = this.state.activeRoll.isOverdrive ? 6 : 3;
+      const maxBumpDistance = this.state.activeRoll.isOverdrive ? 6 : 3;
 
       const opponentOrigPos = opponent.position;
-      let opponentNewPos = opponentOrigPos - bumpDistance;
-      if (opponentNewPos < 1) {
-        opponentNewPos = 1;
+
+      // Walk backward step by step — stop at the first destroyed or off-board tile.
+      // This prevents B from "sliding through" a destroyed intermediate tile.
+      let opponentNewPos = opponentOrigPos;
+      let actualDistance = 0;
+      let hitDestroyed = false;
+      let fellOffBoard = false;
+
+      for (let step = 1; step <= maxBumpDistance; step++) {
+        const nextPos = opponentOrigPos - step;
+        if (nextPos < 1) {
+          // No tile exists — fell off the outer edge
+          fellOffBoard = true;
+          actualDistance = step; // traveled this many steps before falling
+          break;
+        }
+        if (this.state.destroyedTiles[nextPos]) {
+          // Hit a destroyed tile — stop here and fall in
+          opponentNewPos = nextPos;
+          hitDestroyed = true;
+          actualDistance = step;
+          break;
+        }
+        // Safe tile — advance
+        opponentNewPos = nextPos;
+        actualDistance = step;
       }
 
-      this.addLog(`BUMP! Player ${playerId} landed on Player ${opponentId}. Opponent knocked back -${bumpDistance} tiles.`, 'bump');
+      bumpDistance = actualDistance; // used for animation text display
 
-      if (this.state.destroyedTiles[opponentNewPos]) {
+      this.addLog(`BUMP! Player ${playerId} landed on Player ${opponentId}. Opponent knocked back -${actualDistance} tile${actualDistance !== 1 ? 's' : ''}.`, 'bump');
+
+      if (fellOffBoard) {
+        opponent.isAlive = false;
+        opponent.position = Math.max(1, opponentOrigPos - actualDistance + 1); // edge tile for animation
+        bumpedIntoAbyss = true;
+        eliminatedThisTurn.push(opponentId);
+        this.addLog(`Player ${opponentId} was knocked off the outer ring and fell into the Abyss!`, 'elimination');
+      } else if (hitDestroyed) {
         opponent.isAlive = false;
         opponent.position = opponentNewPos;
         bumpedIntoAbyss = true;
         eliminatedThisTurn.push(opponentId);
-        this.addLog(`Player ${opponentId} was bumped onto destroyed Tile ${opponentNewPos} and fell into the Abyss!`, 'elimination');
+        this.addLog(`Player ${opponentId} slid into destroyed Tile ${opponentNewPos} and fell into the Abyss!`, 'elimination');
       } else {
         opponent.position = opponentNewPos;
       }
     }
+
+
 
     // 3. Clear active roll
     this.state.activeRoll = null;

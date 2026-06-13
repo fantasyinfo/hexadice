@@ -19,6 +19,8 @@ export default function GameInterface() {
   const [isMuted, setIsMuted] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [logsExpanded, setLogsExpanded] = useState(false);
+  // Tracks info about the last auto-passed turn (shown in HUD)
+  const [lastPassInfo, setLastPassInfo] = useState(null); // { playerId, roll, movement }
   
   const logEndRef = useRef(null);
 
@@ -121,6 +123,8 @@ export default function GameInterface() {
     sounds.init();
 
     const activePlayer = gameState.currentTurn;
+    // Clear any previous pass info when a new roll starts
+    setLastPassInfo(null);
     const result = serverRef.current.rollDice(activePlayer);
     
     if (result.error) return;
@@ -130,8 +134,15 @@ export default function GameInterface() {
     phaserGameRef.current?.events.emit('ROLL_RESULT', result);
     setIsAnimating(true);
 
-    // If it was a pass phase, play sounds immediately since walk was skipped
+    // If it was a pass phase, record pass info and play sounds immediately
     if (result.animationReport.type === 'pass_phase') {
+      const { roll, isOverdrive, isLeap, playerId } = result.animationReport;
+      setLastPassInfo({
+        playerId,
+        roll,
+        label: isOverdrive ? `Overdrive (${roll})` : isLeap ? `Leap (7)` : `${roll}`,
+        movement: isOverdrive ? 8 : isLeap ? 7 : roll
+      });
       handleReportSounds(result.animationReport);
     }
   };
@@ -237,6 +248,17 @@ export default function GameInterface() {
                 <span className="text-[9px] text-slate-400 font-sans mt-0.5">Move exactly {gameState.activeRoll.movement} tiles to any active tile in same or adjacent ring (in or out)</span>
               </div>
             )}
+
+            {/* Show last pass info for Player A */}
+            {lastPassInfo && lastPassInfo.playerId === 'A' && !gameState.activeRoll && (
+              <div className="flex flex-col gap-1.5 p-3 bg-amber-950/40 border border-amber-700/60 rounded-lg text-center mt-2.5 font-mono">
+                <span className="text-[10px] text-amber-400 tracking-widest font-bold">⚠️ TURN PASSED</span>
+                <span className="text-3xl font-black text-slate-100">🎲 {lastPassInfo.label}</span>
+                <span className="text-[9px] text-amber-300/80 font-sans mt-0.5">
+                  No active tile exactly {lastPassInfo.movement} grid step{lastPassInfo.movement !== 1 ? 's' : ''} away in the same or adjacent ring — turn auto-skipped.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Action Roll button on HUD side */}
@@ -310,6 +332,17 @@ export default function GameInterface() {
                 <span className="text-[10px] text-orange-400 tracking-widest font-bold">ROLLED</span>
                 <span className="text-3xl font-black text-slate-100">🎲 {gameState.activeRoll.roll}</span>
                 <span className="text-[9px] text-slate-400 font-sans mt-0.5">Move exactly {gameState.activeRoll.movement} tiles to any active tile in same or adjacent ring (in or out)</span>
+              </div>
+            )}
+
+            {/* Show last pass info for Player B */}
+            {lastPassInfo && lastPassInfo.playerId === 'B' && !gameState.activeRoll && (
+              <div className="flex flex-col gap-1.5 p-3 bg-amber-950/40 border border-amber-700/60 rounded-lg text-center mt-2.5 font-mono">
+                <span className="text-[10px] text-amber-400 tracking-widest font-bold">⚠️ TURN PASSED</span>
+                <span className="text-3xl font-black text-slate-100">🎲 {lastPassInfo.label}</span>
+                <span className="text-[9px] text-amber-300/80 font-sans mt-0.5">
+                  No active tile exactly {lastPassInfo.movement} grid step{lastPassInfo.movement !== 1 ? 's' : ''} away in the same or adjacent ring — turn auto-skipped.
+                </span>
               </div>
             )}
           </div>
