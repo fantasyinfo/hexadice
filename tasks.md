@@ -18,76 +18,76 @@
 
 ### 1.1 — GameServer.js: Add DP to State
 
-- [ ] Add `dp: 0` to Player A and Player B in `reset()` state
-- [ ] Add `addDP(playerId, amount, reason)` helper method
+- [x] Add `dp: 0` to Player A and Player B in `reset()` state
+- [x] Add `addDP(playerId, amount, reason)` helper method
   - Clamps DP to minimum 0 (cannot go negative)
   - Adds a combat log entry with reason
-- [ ] Call `addDP` in the following places:
-  - [ ] After player moves to inner ring → `+1 DP` ("Moved closer to center")
-  - [ ] When player enters a new ring (ring number smaller than previous) → `+5 DP` ("Entered Ring N!")
-  - [ ] After successful bump → `+10 DP` for attacker ("Bump landed!")
-  - [ ] When bump forces opponent to outer ring → `+15 DP` for attacker ("Forced to Ring N!")
-  - [ ] When bump eliminates opponent → `+25 DP` for attacker ("Opponent eliminated by bump!")
-  - [ ] When collapse eliminates opponent (not by bump) → `+15 DP` for surviving player
-  - [ ] Player receives bump → `-3 DP` for the bumped player
-  - [ ] Turn auto-passed (no valid moves) → `-2 DP`
-  - [ ] Opponent eliminated by collapse while on Tile 61 → `+20 DP` (holding center)
+- [x] Call `addDP` in the following places:
+  - [x] After player moves to inner ring → `+1 DP` ("Moved closer to center")
+  - [x] When player enters a new ring (ring number smaller than previous) → `+5 DP` ("Entered Ring N!")
+  - [x] After successful bump → `+10 DP` for attacker ("Bump landed!")
+  - [x] When bump forces opponent to outer ring → `+15 DP` for attacker ("Forced to Ring N!")
+  - [x] When bump eliminates opponent → `+25 DP` for attacker ("Opponent eliminated by bump!")
+  - [x] When collapse eliminates opponent (not by bump) → `+15 DP` for surviving player
+  - [x] Player receives bump → `-3 DP` for the bumped player
+  - [x] Turn auto-passed (no valid moves) → `-2 DP`
+  - [x] Opponent eliminated by collapse while on Tile 61 → `+20 DP` (holding center)
 
 ### 1.2 — GameServer.js: Dual Win Condition
 
-- [ ] Update `checkWinConditions()` to add DP win check:
+- [x] Update `checkWinConditions()` to add DP win check:
   - If player A's DP >= 100 → Player A wins (type: 'domination')
   - If player B's DP >= 100 → Player B wins (type: 'domination')
   - Check DP win BEFORE survival win check
-- [ ] Add `winType: null` to state (`'domination'` or `'survival'`)
-- [ ] Add `winType` to the state when game ends
+- [x] Add `winType: null` to state (`'domination'` or `'survival'`)
+- [x] Add `winType` to the state when game ends
 
 ### 1.3 — GameServer.js: Track Ring Changes
 
-- [ ] Add `previousRing: getRingNumber(startPos)` to each player in state
-- [ ] After each move, compare player's new ring to `previousRing`
-- [ ] If ring decreased (moved inward) → award ring entry DP, update `previousRing`
+- [x] Add `previousRing: getRingNumber(startPos)` to each player in state
+- [x] After each move, compare player's new ring to `previousRing`
+- [x] If ring decreased (moved inward) → award ring entry DP, update `previousRing`
 
 ### 1.4 — GameInterface.jsx: DP Display in HUD
 
-- [ ] Add DP bar to Player A panel:
+- [x] Add DP bar to Player A panel:
   - Show numeric value: `107 DP`
   - Show a progress bar that fills toward 100 (clamp display at 100 even if over)
   - Bar color: blue for A, orange for B
   - Flash animation when DP increases (use a brief CSS class toggle)
-- [ ] Add same DP bar to Player B panel
-- [ ] Show DP milestone toasts at 25, 50, 75 DP: e.g. *"Player A — 50 DP!"*
+- [x] Add same DP bar to Player B panel
+- [x] Show DP milestone toasts at 25, 50, 75 DP: e.g. *"Player A — 50 DP!"*
 
 ### 1.5 — GameScene.js: DP Gain Visual Feedback
 
-- [ ] When DP is earned, emit a floating `+10 DP` text from the player token
+- [x] When DP is earned, emit a floating `+10 DP` text from the player token
   - Green text, floats upward and fades
   - Use the same pattern as existing dice roll floating text
-- [ ] When DP is lost (`-3 DP`), emit a red floating text downward
+- [x] When DP is lost (`-3 DP`), emit a red floating text downward
 
 ### 1.6 — GameInterface.jsx: Match Summary Screen
 
-- [ ] Replace the current `playVictorySplash` (just a banner) with a full summary modal
-- [ ] Summary modal shows:
-  - [ ] Winner name + win type (`🏆 Domination Win` or `💀 Survival Win`)
-  - [ ] Final DP for both players
-  - [ ] Rounds survived
-  - [ ] Bumps landed (track in state: `bumpsLanded: 0`)
-  - [ ] Bumps received (track in state: `bumpsReceived: 0`)
-  - [ ] Hunt Targets hit (placeholder for Phase 2)
-- [ ] Two buttons: `[PLAY AGAIN]` and `[COPY RESULT]`
+- [x] Replace the current `playVictorySplash` (just a banner) with a full summary modal
+- [x] Summary modal shows:
+  - [x] Winner name + win type (`🏆 Domination Win` or `💀 Survival Win`)
+  - [x] Final DP for both players
+  - [x] Rounds survived
+  - [x] Bumps landed (track in state: `bumpsLanded: 0`)
+  - [x] Bumps received (track in state: `bumpsReceived: 0`)
+  - [x] Hunt Targets hit (placeholder for Phase 2)
+- [x] Two buttons: `[PLAY AGAIN]` and `[COPY RESULT]`
   - PLAY AGAIN → calls `handleRestart()`
   - COPY RESULT → copies a text summary to clipboard
 
 ### 1.7 — Testing Checklist (Phase 1)
 
-- [ ] DP increases correctly for all trigger actions
-- [ ] DP does not go below 0
-- [ ] Domination win at 100 DP fires correctly and stops the game
-- [ ] Survival win still works if no one reaches 100 DP
-- [ ] Match summary shows correct data
-- [ ] DP bars display and update in real time
-- [ ] Floating DP text appears on correct player token
+- [x] DP increases correctly for all trigger actions
+- [x] DP does not go below 0
+- [x] Domination win at 100 DP fires correctly and stops the game
+- [x] Survival win still works if no one reaches 100 DP
+- [x] Match summary shows correct data
+- [x] DP bars display and update in real time
+- [x] Floating DP text appears on correct player token
 
 ---
 

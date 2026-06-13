@@ -440,7 +440,11 @@ export class GameServer {
     eliminated.forEach(deadId => {
       const survivorId = allPlayers.find(id => id !== deadId);
       if (survivorId && this.state.players[survivorId]?.isAlive) {
-        this.addDP(survivorId, 15, 'Opponent eliminated by collapse!');
+        if (this.state.players[deadId].position === 61) {
+          this.addDP(survivorId, 20, 'Opponent eliminated by collapse on Center Tile!');
+        } else {
+          this.addDP(survivorId, 15, 'Opponent eliminated by collapse!');
+        }
       }
     });
   }

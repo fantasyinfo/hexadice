@@ -4,8 +4,8 @@ import './App.css';
 
 function App() {
   return (
-    <div className="min-h-screen bg-[#05070c] text-slate-100 flex items-center justify-center font-sans antialiased overflow-x-hidden selection:bg-cyan-500/30">
-      <main className="w-full flex items-center justify-center p-2 md:p-6">
+    <div className="min-h-screen bg-[#05070c] text-slate-100 font-sans antialiased overflow-x-hidden selection:bg-cyan-500/30 pt-4 pb-12">
+      <main className="w-full">
         <GameInterface />
       </main>
     </div>
