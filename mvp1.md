@@ -1,360 +1,351 @@
-# HEXADROP MVP v0.1
-
-## Objective
-
-Build the smallest playable version of HexaDrop to validate gameplay.
-
-This MVP is focused only on answering:
-
-"Is the core gameplay fun?"
-
-No monetization, no progression, no accounts, no cosmetics.
+# HEXADROP — Game Design Document
+### Current Build: MVP v0.1 · Next Target: v0.2 (Full Gamification Overhaul)
 
 ---
 
-# Game Overview
+## What Is HexaDrop?
 
-HexaDrop is a 2-player survival board game played on a collapsing spiral path.
+HexaDrop is a **2-player tactical survival board game** played on a collapsing hex grid.
 
-Players race toward the center while trying to push opponents into destroyed sections of the board.
+The board shrinks every round. Players roll dice, move across a concentric spiral, bump opponents, complete hunt targets, and race for Domination Points.
 
-There is no finish line.
-
-The winner is the last surviving player.
+> **Core Loop (v0.2):** Roll → Move → Hunt Target → Bump → Ring Control → Collapse → Score → Repeat
 
 ---
 
-# MVP Scope
+## PART 1 — Current Rules (MVP v0.1 — Live & Accurate)
 
-## Included
+### Board
+- **61 hexagonal tiles** in 5 concentric rings
+- Ring 4 (outermost): Tiles 1–24 · Ring 3: 25–42 · Ring 2: 43–54 · Ring 1: 55–60 · Ring 0: Tile 61 (center)
 
-* 2 Players
-* Single Match
-* 61 Tile Spiral Board
-* D8 Dice
-* Bumping System
-* Board Collapse System
-* Elimination System
-* Win Detection
+### Player Spawn
+- Both players spawn randomly on **Ring 4** at two different tiles (no shared spawn)
 
-## Not Included
-
-* Login
-* Matchmaking
-* Chat
-* Ranking
-* Energy System
-* Powerups
-* Skins
-* Ads
-* Purchases
-* Bots
-
----
-
-# Board Layout
-
-Total Tiles: 61
-
-Tile IDs:
-
-1 → 61
-
-Movement can go in any direction (both inward and outward) on the hex grid.
-
-The spiral path layout defines tile IDs (1 to 61) and their starting concentric rings, but players are not forced to follow a single forward direction.
-
-Tile 61 is the center tile.
-
----
-
-# Player Setup
-
-Player A starts on Tile 1.
-
-Player B starts on Tile 1.
-
-Both players can occupy the same starting tile.
-
----
-
-# Turn System
-
-Players play one at a time.
-
-Turn Order:
-
-Player A
+### Turn Order
+```
+Player A rolls & moves
 ↓
-Player B
+Player B rolls & moves
 ↓
-Round Ends
-↓
-Collapse Phase
+Collapse Phase (2 tiles destroyed)
 ↓
 Next Round
+```
 
-Turn Timer:
+### Dice (D8)
+| Roll | Effect |
+|------|--------|
+| 1–6  | Move exactly N BFS grid steps (active tiles only, ±1 ring constraint) |
+| 7    | **Leap** — 7 BFS steps |
+| 8    | **Overdrive** — 8 BFS steps + stronger bump |
 
-No timer. Players manually roll and choose their tiles. No auto-roll.
+### Bump Rules (Step-by-Step Walk)
+| Type | Distance |
+|------|----------|
+| Normal (roll 1–7) | Opponent slides -3 tiles backward |
+| Overdrive (roll 8) | Opponent slides -6 tiles backward |
 
----
+- Walk is step-by-step — stops at first destroyed tile (player eliminated there)
+- Goes off board (past Tile 1) → eliminated
 
-# Dice System
+### Collapse Phase
+- After every round: **2 random active tiles** permanently destroyed
+- Player on collapsing tile → immediately eliminated
 
-Use one D8 dice.
-
-Possible Values:
-
-1
-2
-3
-4
-5
-6
-7
-8
-
----
-
-# Dice Effects & Manual Selection
-
-## Roll 1-6
-
-Move grid-wise by rolled value. Valid targets at exact grid distance $N$ in any direction (both inward and outward) will highlight.
-- **Ring Constraint**: Valid targets must be in the **same concentric ring** or an **immediate adjacent ring** (one ring inward or outward, i.e., `|targetRing - currentRing| <= 1`). Jumps that skip rings are blocked to keep matches highly tactical.
-- **Auto-Pass**: If no valid target exists at distance $N$ within the allowed rings, the turn automatically passes.
+### Win Condition (v0.1)
+- Last player alive wins
 
 ---
 
-## Roll 7 (Leap)
-
-Move grid-wise 7 tiles. Targets must satisfy the same adjacent ring constraints.
+## PART 2 — NEW SYSTEMS (v0.2 Design Spec)
 
 ---
 
-## Roll 8 (Overdrive)
+### 🎯 SYSTEM 1: HUNT TARGET SYSTEM
 
-Move grid-wise 8 tiles. Targets must satisfy the same adjacent ring constraints.
-If landing on opponent, special bump (-6 tiles backward along the spiral) applies.
+**The Big One. Transforms every round into a mission.**
 
----
+At the start of each round, **each player receives a random secret target**.
+If achieved this round → bonus Domination Points (DP) rewarded.
 
-# Bumping Rules
+#### Target Pool
 
-A bump happens when a player lands exactly on the opponent's tile.
+**Tile Targets:**
+- "Land on Tile [X]" (X = a specific active tile near current position)
+- "Reach Ring [N]" (move into an inner ring)
+- "Escape to Ring 4" (move outward — defensive target)
 
----
+**Combat Targets:**
+- "Land 1 Bump this round"
+- "Land 1 Overdrive this round"
+- "Force opponent backward into Ring 4"
 
-## Normal Bump
+**Survival Targets:**
+- "Survive this round without being bumped"
+- "Stay on same ring for the full round"
+- "Don't land on a Ring 4 tile this round"
 
-Triggered by rolls:
+#### Target Rules
+- Targets are **per-player, per-round** — opponent does NOT see your target
+- Target resets each round regardless of success/failure
+- Targets are **generated contextually** — based on player's current position and available tiles (no impossible targets)
+- Bonus DP awarded at **end of round** if target was met
+- Target shown in player's HUD panel at round start
 
-1
-2
-3
-4
-5
-6
-7
+#### Target DP Rewards
+| Target Type | DP Reward |
+|------------|-----------|
+| Tile Target (easy) | +10 DP |
+| Ring Target | +15 DP |
+| Combat Target | +20 DP |
+| Survival Target | +8 DP |
 
-Opponent moves:
-
--3 Tiles
-
-Example:
-
-Opponent at Tile 30
-
-Opponent becomes Tile 27
-
----
-
-## Overdrive Bump
-
-Triggered by roll 8.
-
-Opponent moves:
-
--6 Tiles
-
-Example:
-
-Opponent at Tile 30
-
-Opponent becomes Tile 24
+**Why This Works:**
+Every turn now has a sub-question: *"Can I reach my target AND also play well?"* Targets create private stories. Players will say *"I was going for a bump but I needed to hit tile 42 first."*
 
 ---
 
-# Abyss Rule
+### ⚔️ SYSTEM 2: DOMINATION POINTS (DP)
 
-Destroyed tiles cannot be occupied.
+**Replaces passive survival with active scoring.**
 
-If a player is pushed onto a destroyed tile:
+Every meaningful action earns DP. You are no longer just waiting to be the last one standing — you are actively competing for dominance every single turn.
 
-Player is immediately eliminated.
+#### DP Earn Table
+| Action | DP Earned |
+|--------|-----------|
+| Move closer to center (reduce ring) | +1 DP |
+| Enter a new inner ring for the first time | +5 DP |
+| Bump opponent successfully | +10 DP |
+| Force opponent back to a lower (outer) ring | +15 DP |
+| Opponent eliminated via your bump | +25 DP |
+| Opponent eliminated via collapse (you weren't bumped) | +15 DP |
+| Hold center tile (Tile 61) full round | +20 DP |
+| Complete Hunt Target | +8 to +20 DP (see above) |
+| Survive a round where your tile was adjacent to a collapse | +5 DP ("Close Call") |
 
-Example:
+#### DP Deductions
+| Action | DP Lost |
+|--------|---------|
+| Receive a bump | -3 DP |
+| Turn auto-passed (no valid moves) | -2 DP |
 
-Tile 18 already destroyed.
-
-Opponent gets bumped backward onto Tile 18.
-
-Opponent dies instantly.
-
----
-
-# Collapse Phase
-
-Collapse occurs after both players finish their turns.
-
-Example:
-
-Player A plays
-Player B plays
-
-Collapse triggers
-
----
-
-# Collapse Logic
-
-At the end of every round:
-
-Server randomly destroys 2 tiles from anywhere on the board (any active, undestroyed tiles).
-
-Destroyed tiles remain destroyed forever.
-
-They never return.
+#### DP Display
+- Both players' DP shown live in their HUD panels
+- DP bar fills toward 100 — visible progress like a health/XP bar
+- Flash animation when DP milestones hit (25, 50, 75, 100)
 
 ---
 
-# Collapse Elimination
+### 🏆 SYSTEM 3: DUAL WIN CONDITION
 
-If a player is standing on a tile that collapses:
+**Two valid strategies. Two paths to victory.**
 
-Player immediately dies.
+#### Win Path A — DOMINATION WIN 🏆
+First player to reach **100 Domination Points** wins instantly.
+- Aggressive player's win path
+- Rewards: bumping, targeting, center control
+- Can end game early if one player dominates
 
-Example:
+#### Win Path B — SURVIVAL WIN 💀
+If neither player reaches 100 DP, game continues until **last player alive**.
+- Defensive/cautious player's win path
+- Board collapse will eventually decide things
+- Forces aggressive player to also care about staying alive
 
-Player standing on Tile 9.
-
-Tile 9 selected for collapse.
-
-Player eliminated.
-
----
-
-# Valid Tiles
-
-Server tracks:
-
-alive
-destroyed
-
-Destroyed tiles are invalid.
-
-Players cannot exist on destroyed tiles.
+#### Strategy Identity
+```
+AGGRESSIVE PLAYER: Chase 100 DP → bump hard, hold center, complete targets
+DEFENSIVE PLAYER: Survive collapse → avoid risky moves, let board shrink
+```
+*Both are valid. Neither is obviously correct. This is what creates real rivalry.*
 
 ---
 
-# Win Condition
+### 🔥 SYSTEM 4: RING CONTROL
 
-Winner = Last Player Alive.
+**Makes positioning feel like chess.**
 
-Examples:
+A player **controls a ring** when they have been the ONLY player on that ring for 2+ consecutive turns.
 
-Player A Alive
-Player B Dead
+#### Control Benefits (for the controlling player)
+- **+1 BFS movement bonus** — can reach tiles 1 step farther in that ring
+- **Bump power +1** — bump distance increases by 1 in their controlled ring
+- Visual: controlled ring tiles glow with player's color (subtle edge tint)
 
-Winner = Player A
+#### Control Penalty (for the opponent in a controlled ring)
+- **-1 BFS movement** — tiles 1 step closer are the max reach in that ring
+- This makes the opponent feel "squeezed"
 
+#### Control Rules
+- Control is **lost immediately** when opponent enters that ring
+- Control is ring-specific — you can control Ring 3 while opponent controls Ring 2
+- Center tile (Tile 61) cannot be "controlled" — it's always neutral
+
+#### HUD Display
+- Small icon next to ring indicator: 🔵 (controlled by A), 🟠 (controlled by B), ⬜ (neutral)
+
+**Why This Works:**
+Players now think *"I need to lock down Ring 2 before he gets there."* Movement becomes about territory, not just distance. This is the chess-like layer the game needs.
+
+> **⚠️ Design Note:** Ring Control is the most complex system. Must be displayed very clearly in HUD or it will confuse players. Keep visual feedback extremely obvious.
+
+---
+
+### 💀 SYSTEM 5: PRESSURE TIMER — COLLAPSE INTENT
+
+**Replaces random collapse with telegraphed collapse.**
+
+Instead of 2 random tiles being destroyed with no warning:
+
+#### New Collapse Flow
+```
+Round N:
+  → Server selects 2 tiles to "warn" (mark as endangered)
+  → Warned tiles shown with PULSING RED border + ⚠️ icon
+  → Players can see which tiles are marked this round
+  
+Round N+1 (next collapse phase):
+  → Those 2 warned tiles are DESTROYED
+  → 2 new tiles are warned for Round N+2
+```
+
+#### Strategic Impact
+Players now face a decision every turn:
+- *"Do I chase the opponent or escape the marked tile?"*
+- *"Can I bait him onto a warned tile?"*
+- *"The tile I want is marked — is it worth the risk?"*
+
+#### Warning Rules
+- Warned tiles are **public** — both players see them
+- Players CAN still move onto warned tiles (risky but valid)
+- If a player is on a warned tile when it collapses → eliminated (same as now)
+- Warned tiles still generate from anywhere on board (not ring-restricted)
+
+**Why This Works:**
+Random collapse feels like a coinflip. Telegraphed collapse feels like a threat you can respond to. *"I saw it coming and I chose to risk it"* vs *"RNG killed me."* Players blame themselves, not the game.
+
+---
+
+### ⚡ SYSTEM 6: COMBO SYSTEM
+
+**Streaks and momentum. This is what makes games addictive.**
+
+When a player performs consecutive high-value actions, a **Combo State** activates.
+
+#### Combo Triggers
+| Combo Name | Trigger | Bonus |
+|-----------|---------|-------|
+| 🔥 **RAMPAGE** | 2 bumps in a row (consecutive turns) | +15 DP bonus, bump visual effect upgrades |
+| ⚡ **ASCEND** | 3 consecutive moves toward center | +10 DP + movement animation effect |
+| 💥 **BERSERK** | 2 Overdrive rolls (8) in one match | +20 DP + "Berserk" badge |
+| 🛡️ **IRONWALL** | Survive 3 rounds without receiving a bump | +10 DP + shield visual on token |
+| 🎯 **PRECISION** | 3 Hunt Targets completed in a row | +25 DP + target upgrades to "rare" tier |
+
+#### Combo Display
+- Combo name flashes in large text on the Phaser board (like a fighting game)
+- Combo counter shown in player HUD
+- Breaking a combo (getting bumped, passing turn) resets it
+- Opponent sees a small alert: *"Player A is on a RAMPAGE!"*
+
+**Why This Works:**
+Humans love streaks. When you're on a combo, you play more carefully to protect it. When you're NOT on a combo, you chase one. Both states keep the player intensely engaged. Candy Crush, PUBG kill streaks, Chess momentum — same psychology.
+
+---
+
+## PART 3 — Updated Win Condition Summary
+
+```
+GAME ENDS WHEN:
+Either player reaches 100 DP → DOMINATION WIN 🏆
 OR
+One player is eliminated (last alive) → SURVIVAL WIN 💀
 
-Player B Alive
-Player A Dead
-
-Winner = Player B
-
----
-
-# Match Duration Goal
-
-Target Match Time:
-
-3–5 Minutes
-
-Average Rounds:
-
-6–10
+DRAW: Both eliminated simultaneously → no winner, 0 DP gained
+```
 
 ---
 
-# MVP Visual Style
+## PART 4 — Match Summary Screen (v0.2)
 
-Board:
+After every match:
 
-Simple 2D spiral path.
-
-Tiles:
-
-Gray Hexagons
-
-Destroyed Tile:
-
-Dark Red
-
-Collapse Animation:
-
-Flash Red
-Fade Out
-
-Player A:
-
-Blue Circle
-
-Player B:
-
-Orange Circle
-
-Background:
-
-Dark Space Theme
-
-#05070c
+```
+╔══════════════════════════════════╗
+║  🏆  PLAYER A — DOMINATION WIN!  ║
+╠══════════════════════════════════╣
+║  Domination Points:    107 DP    ║
+║  Rounds Survived:      8         ║
+║  Bumps Landed:         3         ║
+║  Hunt Targets Hit:     5/8       ║
+║  Combos Triggered:     2         ║
+║  Rings Controlled:     Ring 2, 3 ║
+║  Win Streak:           🔥 3 Wins  ║
+╠══════════════════════════════════╣
+║  [REMATCH]        [SHARE RESULT] ║
+╚══════════════════════════════════╝
+```
 
 ---
 
-# Server Authority Rules
+## PART 5 — Implementation Priority
 
-Server controls:
-
-* Dice Roll
-* Movement
-* Bump Calculation
-* Tile Destruction
-* Elimination
-* Winner Detection
-
-Client only:
-
-* Sends Roll Request
-* Renders Animation
-* Displays State
-
-No gameplay calculation on client.
+| Priority | System | Effort | Impact | Build First? |
+|----------|--------|--------|--------|-------------|
+| 🔴 P0 | **Domination Points (DP)** | Low | Critical | YES |
+| 🔴 P0 | **Dual Win Condition** | Low | Critical | YES |
+| 🔴 P0 | **Match Summary Screen** | Low | Very High | YES |
+| 🟡 P1 | **Hunt Target System** | Medium | Very High | Yes |
+| 🟡 P1 | **Collapse Intent (Warning)** | Medium | High | Yes |
+| 🟡 P1 | **Combo System** | Medium | High | Yes |
+| 🟢 P2 | **Ring Control** | High | High | After P1 |
+| 🟢 P2 | Player Names + Share Card | Low | High | After P1 |
+| 🔵 P3 | Win Streak Multiplier | Low | Medium | Later |
+| 🔵 P3 | In-Session Badges | Medium | Medium | Later |
 
 ---
 
-# Success Criteria
+## PART 6 — Technical Notes (How to Build)
 
-The MVP is successful if:
+### DP System
+- Add `dp: 0` to each player in `GameServer.js` state
+- Add `addDP(playerId, amount, reason)` helper in GameServer
+- Call `addDP` after every bump, ring change, collapse survival, etc.
+- DP win check inside `checkWinConditions()`
 
-1. Two players understand rules within 30 seconds.
-2. Average match lasts 3-5 minutes.
-3. Players want to immediately play another match.
-4. Bumping creates memorable moments.
-5. Board collapse creates tension.
+### Hunt Target System
+- Add `huntTarget: null` to each player in state
+- `generateTarget(playerId)` runs at round start — contextual logic based on position
+- `checkTargetCompletion(playerId)` runs after each move
+- Targets stored as `{ type, param, achieved, dpReward }`
 
-# Tech stack
-React + Phaser only
+### Collapse Intent
+- Add `warnedTiles: []` to state
+- Server selects 2 tiles during current collapse phase → stores in `warnedTiles`
+- Next collapse phase: destroy `warnedTiles`, generate new `warnedTiles`
+- Phaser: render warned tiles with pulsing red border
+
+### Ring Control
+- Add `ringControl: { 0: null, 1: null, 2: null, 3: null, 4: null }` to state
+- After each move: check which player is sole occupant of each ring for 2+ turns
+- Apply movement modifier during `rollDice` valid target calculation
+
+### Combo System
+- Add `combo: { name, count, lastAction }` to each player
+- Track last N actions per player
+- Pattern-match against combo triggers after each action
+- Trigger animation event to Phaser for combo flash
+
+---
+
+## PART 7 — Tech Stack
+
+- **Frontend:** React + Phaser (existing)
+- **Game Logic:** GameServer.js (authoritative, client-side)
+- **Persistence:** localStorage — names, scores, streaks, head-to-head record
+- **No backend needed** for v0.2
+
+---
+
+*Last updated: v0.1 complete → v0.2 full design spec locked*

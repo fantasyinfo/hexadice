@@ -547,6 +547,11 @@ export class GameScene extends Phaser.Scene {
       await this.animateBump(animationReport);
     }
 
+    // 3b. Floating DP text events
+    if (animationReport.dpEvents && animationReport.dpEvents.length > 0) {
+      this.animateDPEvents(animationReport.dpEvents);
+    }
+
     // 4. Play Collapse Animations (if any)
     if (animationReport.collapsedTiles.length > 0) {
       await this.animateCollapse(animationReport);
@@ -839,48 +844,102 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  // Victory banner splash
+  // Floating DP gain/loss text anchored to the relevant player's token
+  animateDPEvents(dpEvents) {
+    dpEvents.forEach((event, index) => {
+      const token = this.playerTokens[event.playerId];
+      if (!token) return;
+
+      const isGain = event.amount > 0;
+      const color = isGain ? '#00ff88' : '#ff4444';
+      const offsetY = -35 - index * 18; // Stack multiple events vertically
+
+      const dpText = this.add.text(token.x, token.y + offsetY, event.label, {
+        fontFamily: '"Courier New", Courier, monospace',
+        fontSize: '13px',
+        fontWeight: 'bold',
+        color,
+        stroke: '#000000',
+        strokeThickness: 3,
+        padding: { x: 4, y: 2 }
+      }).setOrigin(0.5);
+      this.boardContainer.add(dpText);
+
+      this.tweens.add({
+        targets: dpText,
+        y: dpText.y - 30,
+        alpha: 0,
+        scaleX: 1.15,
+        scaleY: 1.15,
+        delay: index * 120, // Stagger each event
+        duration: 900,
+        ease: 'Quad.easeOut',
+        onComplete: () => dpText.destroy()
+      });
+    });
+  }
+
+  // Victory banner splash — shows win type subtitle
   playVictorySplash(winner) {
+    const state = this.state;
     const { width, height } = this.scale;
 
     let bannerColor = 0x1f2937;
     let titleText = 'DRAW!';
     let titleColor = '#ffcc00';
+    let subtitleText = '';
 
     if (winner === 'A') {
-      bannerColor = 0x00bfff;
+      bannerColor = 0x003d7a;
       titleText = 'PLAYER A WINS!';
-      titleColor = '#ffffff';
+      titleColor = '#00bfff';
+      subtitleText = state.winType === 'domination' ? '🏆 DOMINATION WIN — 100 DP!' : '💀 SURVIVAL WIN';
     } else if (winner === 'B') {
-      bannerColor = 0xff8c00;
+      bannerColor = 0x7a3d00;
       titleText = 'PLAYER B WINS!';
-      titleColor = '#ffffff';
+      titleColor = '#ff8c00';
+      subtitleText = state.winType === 'domination' ? '🏆 DOMINATION WIN — 100 DP!' : '💀 SURVIVAL WIN';
     }
 
     const banner = this.add.graphics();
-    banner.fillStyle(bannerColor, 0.85);
-    banner.fillRect(0, height / 2 - 60, width, 120);
+    banner.fillStyle(bannerColor, 0.9);
+    banner.fillRect(0, height / 2 - 65, width, 130);
 
-    const txt = this.add.text(width / 2, height / 2, titleText, {
+    const txt = this.add.text(width / 2, height / 2 - 12, titleText, {
       fontFamily: 'Impact, Arial, sans-serif',
-      fontSize: '42px',
+      fontSize: '40px',
       color: titleColor,
       stroke: '#000000',
       strokeThickness: 5
     }).setOrigin(0.5);
 
+    const sub = this.add.text(width / 2, height / 2 + 28, subtitleText, {
+      fontFamily: 'Arial, sans-serif',
+      fontSize: '16px',
+      fontWeight: 'bold',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5);
+
     txt.setScale(0.1);
+    sub.setAlpha(0);
+
     this.tweens.add({
       targets: txt,
       scaleX: 1,
       scaleY: 1,
       duration: 500,
-      ease: 'Back.easeOut'
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        this.tweens.add({ targets: sub, alpha: 1, duration: 300 });
+      }
     });
 
     this.game.events.once('SYNC_STATE', () => {
       banner.destroy();
       txt.destroy();
+      sub.destroy();
     });
   }
 }
