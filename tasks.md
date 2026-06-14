@@ -377,16 +377,34 @@ PRECISION: 3 consecutive hunt targets achieved        → +25 DP (needs target d
 
 ---
 
-## FINAL INTEGRATION CHECKLIST
+---
 
-- [ ] All 5 phases working together without state conflicts
-- [ ] DP win check doesn't interrupt animations mid-way
-- [ ] Hunt targets generate correctly in late game (few tiles left)
-- [ ] Combo system works alongside ring control modifiers
-- [ ] Match summary shows all phase data (DP, targets hit, combos, rings controlled)
-- [ ] localStorage persists correctly across page reloads
-- [ ] Rules modal updated to explain DP, Hunt Targets, Collapse Intent, Ring Control, Combos
-- [ ] Game tested for minimum 10 full matches end-to-end
+## PHASE 6 — Hexa-Ludo Strategy (4 Pawns & The Core Race)
+> **Goal:** Transform the game from a brawler into a tactical squad-based race. Each player controls 4 pawns. The goal is to move all pawns to the center (Tile 61).
+> **Files:** `GameServer.js`, `GameInterface.jsx`, `GameScene.js`
+> **Estimated effort:** 3–4 sessions
+> ⚠️ Massive architectural change from single-token to multi-token state.
+
+### 6.1 — GameServer.js: Multi-Pawn State
+- [x] Refactor `player.position` to `player.pawns: [{ id, position, isAlive, hasReachedCore }]`.
+- [x] Update `reset()` to spawn 4 pawns per player on specific outer ring tiles.
+- [x] Modify `selectTile` to accept `pawnId` along with `tileId`.
+- [x] Update all collision, bump, and DP logic to iterate over specific pawns instead of the single player token.
+- [x] Add "Home / Core" logic: Reaching Tile 61 exactly marks a pawn as `hasReachedCore = true`.
+
+### 6.2 — GameScene.js: Pawn Rendering & Interaction
+- [x] Refactor `createPlayers()` to spawn 4 distinct visual tokens per player.
+- [x] Update `handleRollResult` to highlight valid move paths for *all* movable pawns.
+- [x] Allow the user to click a specific pawn to preview its moves, then click the destination hex.
+- [x] Update animations so multiple pawns can coexist on the board.
+- [x] Animate pawns "Ascending" when they reach the Center Tile 61.
+
+### 6.3 — GameInterface.jsx: HUD Updates for Squads
+- [x] Update Player Cards to show the status of all 4 pawns (e.g., 4 little dots indicating Active/Dead/Home).
+- [x] Change the game summary to reflect Pawn survival and Core ascensions rather than just DP.
+- [x] Provide UI feedback indicating *which* pawn is currently selected for moving.
+
+## FINAL INTEGRATION CHECKLIST
 
 ---
 

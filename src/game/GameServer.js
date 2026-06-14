@@ -1,11 +1,4 @@
-// GameServer.js
-// HexaDrop v0.2 — Phase 1: Domination Points + Dual Win Condition
-// Authoritative game logic — all state changes happen here.
-
 import { getRingTiles, getRingNumber, getBfsDistance } from './BoardGeometry';
-
-// NOTE: getBfsDistance (BFS through active tiles) is used instead of axial hex distance.
-// Axial distance ignores destroyed tiles; BFS correctly treats them as obstacles.
 
 export class GameServer {
   constructor() {
@@ -13,68 +6,56 @@ export class GameServer {
   }
 
   reset() {
-    // Pick 2 different random starting tiles from Ring 4 (tiles 1–24)
-    const ring4Tiles = Array.from({ length: 24 }, (_, i) => i + 1);
-    const idxA = Math.floor(Math.random() * ring4Tiles.length);
-    let idxB;
-    do { idxB = Math.floor(Math.random() * ring4Tiles.length); } while (idxB === idxA);
-    const startA = ring4Tiles[idxA];
-    const startB = ring4Tiles[idxB];
+    const startA = [1, 1, 1, 1];
+    const startB = [13, 13, 13, 13];
+
+    const createPawns = (playerId, starts) => starts.map((pos, i) => ({
+      id: `${playerId}${i + 1}`,
+      position: pos,
+      spawnPos: pos,
+      isAlive: true,
+      isHome: false,
+      previousRing: 4
+    }));
 
     this.state = {
       players: {
         A: {
-          id: 'A', name: 'Player A', position: startA, isAlive: true,
-          dp: 0,                        // Domination Points
-          previousRing: getRingNumber(startA), // Track ring changes
-          bumpsLanded: 0,               // stat for match summary
-          bumpsReceived: 0,             // stat for match summary
-          huntTarget: null,
-          huntTargetsHit: 0,
-          bumpedThisRound: false,
-          combo: { name: null, count: 0, actionHistory: [] }
+          id: 'A', name: 'Player A', isAlive: true,
+          dp: 0, bumpsLanded: 0, bumpsReceived: 0,
+          huntTarget: null, huntTargetsHit: 0, bumpedThisRound: false,
+          combo: { name: null, count: 0, actionHistory: [] },
+          pawns: createPawns('A', startA)
         },
         B: {
-          id: 'B', name: 'Player B', position: startB, isAlive: true,
-          dp: 0,
-          previousRing: getRingNumber(startB),
-          bumpsLanded: 0,
-          bumpsReceived: 0,
-          huntTarget: null,
-          huntTargetsHit: 0,
-          bumpedThisRound: false,
-          combo: { name: null, count: 0, actionHistory: [] }
+          id: 'B', name: 'Player B', isAlive: true,
+          dp: 0, bumpsLanded: 0, bumpsReceived: 0,
+          huntTarget: null, huntTargetsHit: 0, bumpedThisRound: false,
+          combo: { name: null, count: 0, actionHistory: [] },
+          pawns: createPawns('B', startB)
         }
       },
-      destroyedTiles: {},   // tileId -> true
-      warnedTiles: [],      // tileIds that will collapse next round
+      destroyedTiles: {},
+      warnedTiles: [],
       activeRing: 4,
       currentTurn: 'A',
       round: 1,
-      winner: null,         // 'A', 'B', 'Draw', or null
-      winType: null,        // 'domination' | 'survival' | 'draw'
+      winner: null,
+      winType: null,
       isGameOver: false,
-      activeRoll: null,     // { roll, isOverdrive, isLeap, movement, validTargets }
+      activeRoll: null,
       combatLog: []
     };
     this.logCounter = 0;
-    this.addLog(`Game started! Player A on Tile ${startA}, Player B on Tile ${startB}. First to 100 DP or last alive wins!`, 'system');
+    this.addLog(`Game started! Hexa-Ludo Squad Mode. Get all 4 pawns to The Core (Tile 61)!`, 'system');
     this.generateTarget('A');
     this.generateTarget('B');
   }
 
-  // ─── Configuration ──────────────────────────────────────────────────────────
-
   setConfig(playersConfig) {
-    if (playersConfig.A && playersConfig.A.name) {
-      this.state.players.A.name = playersConfig.A.name;
-    }
-    if (playersConfig.B && playersConfig.B.name) {
-      this.state.players.B.name = playersConfig.B.name;
-    }
+    if (playersConfig.A && playersConfig.A.name) this.state.players.A.name = playersConfig.A.name;
+    if (playersConfig.B && playersConfig.B.name) this.state.players.B.name = playersConfig.B.name;
   }
-
-  // ─── Combo System ───────────────────────────────────────────────────────────
 
   updateCombo(playerId, action) {
     const player = this.state.players[playerId];
@@ -88,58 +69,39 @@ export class GameServer {
     }
 
     player.combo.actionHistory.push(action);
-    if (player.combo.actionHistory.length > 5) {
-      player.combo.actionHistory.shift();
-    }
+    if (player.combo.actionHistory.length > 5) player.combo.actionHistory.shift();
 
     const hist = player.combo.actionHistory;
     let comboAwarded = null;
 
-    if (hist.length >= 2 && hist.slice(-2).every(a => a === 'bump' || a === 'overdrive')) {
-      comboAwarded = { name: 'RAMPAGE', dp: 15 };
-    } else if (hist.length >= 3 && hist.slice(-3).every(a => a === 'move_inward')) {
-      comboAwarded = { name: 'ASCEND', dp: 10 };
-    } else if (hist.filter(a => a === 'overdrive').length >= 2) {
-      comboAwarded = { name: 'BERSERK', dp: 20 };
-    } else if (hist.length >= 3 && hist.slice(-3).every(a => a === 'survived_no_bump')) {
-      comboAwarded = { name: 'IRONWALL', dp: 10 };
-    } else if (hist.length >= 3 && hist.slice(-3).every(a => a === 'hunt_target')) {
-      comboAwarded = { name: 'PRECISION', dp: 25 };
-    }
+    if (hist.length >= 2 && hist.slice(-2).every(a => a === 'bump' || a === 'overdrive')) comboAwarded = { name: 'RAMPAGE', dp: 15 };
+    else if (hist.length >= 3 && hist.slice(-3).every(a => a === 'move_inward')) comboAwarded = { name: 'ASCEND', dp: 10 };
+    else if (hist.filter(a => a === 'overdrive').length >= 2) comboAwarded = { name: 'BERSERK', dp: 20 };
+    else if (hist.length >= 3 && hist.slice(-3).every(a => a === 'survived_no_bump')) comboAwarded = { name: 'IRONWALL', dp: 10 };
+    else if (hist.length >= 3 && hist.slice(-3).every(a => a === 'hunt_target')) comboAwarded = { name: 'PRECISION', dp: 25 };
 
     if (comboAwarded) {
       player.combo.name = comboAwarded.name;
       player.combo.count++;
       this.addDP(playerId, comboAwarded.dp, `${comboAwarded.name} Combo!`);
-      player.combo.actionHistory = []; // Reset after award
+      player.combo.actionHistory = [];
       return comboAwarded;
     }
-
     return null;
   }
 
-  // ─── Logging ────────────────────────────────────────────────────────────────
-
   addLog(text, type = 'system') {
-    this.state.combatLog.push({
-      id: ++this.logCounter,
-      text,
-      type,
-      round: this.state.round,
-      turn: this.state.currentTurn
-    });
+    this.state.combatLog.push({ id: ++this.logCounter, text, type, round: this.state.round, turn: this.state.currentTurn });
   }
-
-  // ─── Hunt Target System ─────────────────────────────────────────────────────
 
   generateTarget(playerId) {
     const player = this.state.players[playerId];
     if (!player || !player.isAlive) return;
 
-    const currentRing = getRingNumber(player.position);
-    const opponentId = playerId === 'A' ? 'B' : 'A';
-    const opponent = this.state.players[opponentId];
-    const opponentRing = getRingNumber(opponent.position);
+    const activePawns = player.pawns.filter(p => p.isAlive && !p.isHome);
+    if (activePawns.length === 0) return;
+    const refPawn = activePawns[Math.floor(Math.random() * activePawns.length)];
+    const currentRing = getRingNumber(refPawn.position);
 
     const activeTiles = [];
     for (let id = 1; id <= 61; id++) {
@@ -147,8 +109,6 @@ export class GameServer {
     }
 
     const possibleTargets = [];
-
-    // 1. Reach Ring X (only if there are active tiles in that ring)
     let targetRing = null;
     if (currentRing === 4) targetRing = [2, 3][Math.floor(Math.random() * 2)];
     else if (currentRing === 3) targetRing = [1, 2][Math.floor(Math.random() * 2)];
@@ -157,32 +117,17 @@ export class GameServer {
 
     if (targetRing !== null) {
       const ringTiles = getRingTiles(targetRing);
-      const hasActiveTileInRing = ringTiles.some(t => !this.state.destroyedTiles[t]);
-      if (hasActiveTileInRing) {
+      if (ringTiles.some(t => !this.state.destroyedTiles[t])) {
         possibleTargets.push({ type: 'reach_ring', label: `Reach Ring ${targetRing}`, param: targetRing, dpReward: 15 });
       }
     }
 
-    // 2. Land on specific tile
     if (activeTiles.length > 0) {
       let targetTile = activeTiles[Math.floor(Math.random() * activeTiles.length)];
-      while (targetTile === player.position && activeTiles.length > 1) {
-        targetTile = activeTiles[Math.floor(Math.random() * activeTiles.length)];
-      }
       possibleTargets.push({ type: 'land_tile', label: `Land on Tile ${targetTile}`, param: targetTile, dpReward: 10 });
     }
 
-    // 3. Bump based (if opponent is alive)
-    if (opponent.isAlive) {
-      possibleTargets.push({ type: 'land_bump', label: 'Land a Bump this round', param: null, dpReward: 20 });
-      possibleTargets.push({ type: 'land_overdrive', label: 'Land an Overdrive bump', param: null, dpReward: 25 });
-      
-      if (opponentRing < 4) {
-        possibleTargets.push({ type: 'force_outer', label: 'Push opponent to Ring 4', param: null, dpReward: 20 });
-      }
-    }
-
-    // 4. Survive no bump
+    possibleTargets.push({ type: 'land_bump', label: 'Land a Bump this round', param: null, dpReward: 20 });
     possibleTargets.push({ type: 'survive_no_bump', label: 'Survive without being bumped', param: null, dpReward: 8 });
 
     const target = possibleTargets[Math.floor(Math.random() * possibleTargets.length)];
@@ -197,24 +142,12 @@ export class GameServer {
     const target = player.huntTarget;
     let achieved = false;
 
-    if (target.type === 'reach_ring') {
-      const oldR = actionContext ? actionContext.oldRing : undefined;
-      const newR = actionContext ? actionContext.newRing : undefined;
-      if (oldR !== undefined && newR !== undefined) {
-        if ((oldR >= target.param && newR <= target.param) || (oldR <= target.param && newR >= target.param)) {
-          achieved = true;
-        }
-      } else {
-        if (getRingNumber(player.position) === target.param) achieved = true;
-      }
-    } else if (target.type === 'land_tile') {
-      if (player.position === target.param) achieved = true;
-    } else if (target.type === 'land_bump') {
-      if (actionContext && actionContext.bumpedOpponent) achieved = true;
-    } else if (target.type === 'land_overdrive') {
-      if (actionContext && actionContext.bumpedOpponent && actionContext.isOverdrive) achieved = true;
-    } else if (target.type === 'force_outer') {
-      if (actionContext && actionContext.bumpedOpponent && actionContext.opponentNewRing === 4) achieved = true;
+    if (target.type === 'reach_ring' && actionContext && actionContext.pawn) {
+      if (getRingNumber(actionContext.pawn.position) === target.param) achieved = true;
+    } else if (target.type === 'land_tile' && actionContext && actionContext.pawn) {
+      if (actionContext.pawn.position === target.param) achieved = true;
+    } else if (target.type === 'land_bump' && actionContext && actionContext.bumpedOpponent) {
+      achieved = true;
     } else if (target.type === 'survive_no_bump') {
       if (actionContext && actionContext.roundEnded && !actionContext.wasBumped) achieved = true;
     }
@@ -222,444 +155,271 @@ export class GameServer {
     if (achieved) {
       target.achieved = true;
       player.huntTargetsHit++;
-
-      const prevPos = actionContext && actionContext.startPosition !== undefined ? actionContext.startPosition : player.position;
-      const curPos = player.position;
-      const reason = `Hunt Target Completed: ${target.label} (Moved Tile ${prevPos} -> ${curPos})`;
-
-      this.addDP(playerId, target.dpReward, reason);
+      this.addDP(playerId, target.dpReward, `Hunt Target Completed: ${target.label}`);
       if (actionContext && actionContext.dpEvents) {
-        actionContext.dpEvents.push({ playerId, amount: target.dpReward, label: `🎯 TARGET HIT! +${target.dpReward} DP`, isTarget: true });
+         actionContext.dpEvents.push({ playerId, amount: target.dpReward, label: `🎯 TARGET HIT! +${target.dpReward} DP`, isTarget: true });
       }
-
-      const comboAction = target.type === 'survive_no_bump' ? 'survived_no_bump' : 'hunt_target';
-      const combo = this.updateCombo(playerId, comboAction);
-      if (combo && actionContext && actionContext.triggeredCombos) {
-        actionContext.triggeredCombos.push({ playerId, ...combo });
-      }
+      this.updateCombo(playerId, target.type === 'survive_no_bump' ? 'survived_no_bump' : 'hunt_target');
     }
   }
 
-  // ─── DP System ──────────────────────────────────────────────────────────────
-
-  /**
-   * Award or deduct Domination Points.
-   * Clamps DP to a minimum of 0 (cannot go negative).
-   * Logs the reason to the combat log.
-   */
   addDP(playerId, amount, reason) {
     const player = this.state.players[playerId];
-    if (!player || !player.isAlive) return;
-
+    if (!player) return;
     const before = player.dp;
     player.dp = Math.max(0, player.dp + amount);
     const actual = player.dp - before;
-
     if (actual === 0) return;
-
     const sign = actual > 0 ? '+' : '';
-    const logType = actual > 0 ? 'dp_gain' : 'dp_loss';
-    this.addLog(`[DP] Player ${playerId}: ${sign}${actual} — ${reason} (DP: ${before} → ${player.dp})`, logType);
+    this.addLog(`[DP] Player ${playerId}: ${sign}${actual} — ${reason} (DP: ${before} → ${player.dp})`, actual > 0 ? 'dp_gain' : 'dp_loss');
   }
 
-  /**
-   * Check if player moved to a new (more inner) ring and award DP accordingly.
-   * Called after every position change.
-   */
-  checkRingProgress(playerId) {
-    const player = this.state.players[playerId];
-    const newRing = getRingNumber(player.position);
-    const oldRing = player.previousRing;
+  checkRingProgress(playerId, pawn) {
+    const newRing = getRingNumber(pawn.position);
+    const oldRing = pawn.previousRing;
 
     if (newRing < oldRing) {
-      // Moved inward — award for each ring crossed
-      this.addDP(playerId, 1, 'Moved closer to center');
+      this.addDP(playerId, 1, 'Pawn moved closer to center');
       if (newRing < oldRing) {
-        // Award ring-entry bonus (first time entering this inner ring)
-        this.addDP(playerId, 5, `Entered Ring ${newRing}!`);
+        this.addDP(playerId, 5, `Pawn entered Ring ${newRing}!`);
       }
-      
       const combo = this.updateCombo(playerId, 'move_inward');
-      if (combo) player.latestCombo = combo;
+      if (combo) this.state.players[playerId].latestCombo = combo;
     }
-
-    player.previousRing = newRing;
+    pawn.previousRing = newRing;
   }
-
-  // ─── State ──────────────────────────────────────────────────────────────────
 
   getState() {
     return JSON.parse(JSON.stringify(this.state));
   }
 
-  // ─── Dice Roll (Phase 1 of a turn) ─────────────────────────────────────────
-
   rollDice(playerId, forcedRoll = null) {
-    if (this.state.isGameOver) {
-      return { state: this.getState(), error: 'Game is already over' };
-    }
-    if (playerId !== this.state.currentTurn) {
-      return { state: this.getState(), error: 'Not your turn' };
-    }
-    if (this.state.activeRoll) {
-      return { state: this.getState(), error: 'Already rolled. Select a tile to move.' };
-    }
+    if (this.state.isGameOver) return { state: this.getState(), error: 'Game is already over' };
+    if (playerId !== this.state.currentTurn) return { state: this.getState(), error: 'Not your turn' };
+    if (this.state.activeRoll) return { state: this.getState(), error: 'Already rolled.' };
 
     const player = this.state.players[playerId];
-
-    // 1. Roll D8
-    const roll = forcedRoll !== null ? forcedRoll : Math.floor(Math.random() * 8) + 1;
+    const roll = forcedRoll !== null ? forcedRoll : Math.floor(Math.random() * 6) + 1;
     let movement = roll;
-    let isLeap = false;
-    let isOverdrive = false;
+    const isOverdrive = roll === 6;
+    const isLeap = roll === 5;
 
-    if (roll === 7) { isLeap = true; }
-    else if (roll === 8) { isOverdrive = true; }
+    this.addLog(`Player ${playerId} rolled a ${roll}! (${isOverdrive ? 'Overdrive!' : isLeap ? 'Leap!' : 'Move ' + movement})`, 'roll');
 
-    this.addLog(
-      `Player ${playerId} rolled a ${roll}! (${isOverdrive ? 'Overdrive!' : isLeap ? 'Leap!' : 'Move ' + movement})`,
-      'roll'
-    );
+    const validTargets = {};
+    let totalValidMoves = 0;
 
-    // 2. Calculate valid target tiles (BFS distance === movement, ±1 ring)
-    const validTargets = [];
-    const currentPos = player.position;
-    const currentRing = getRingNumber(currentPos);
+    player.pawns.forEach(pawn => {
+      if (!pawn.isAlive || pawn.isHome) return;
+      const targets = [];
+      const currentPos = pawn.position;
+      const currentRing = getRingNumber(currentPos);
 
-    for (let targetId = 1; targetId <= 61; targetId++) {
-      if (targetId === currentPos) continue;
-      if (this.state.destroyedTiles[targetId]) continue;
+      for (let targetId = 1; targetId <= 61; targetId++) {
+        if (targetId === currentPos || this.state.destroyedTiles[targetId]) continue;
+        const targetRing = getRingNumber(targetId);
+        if (Math.abs(targetRing - currentRing) > 1) continue;
 
-      const targetRing = getRingNumber(targetId);
-      if (Math.abs(targetRing - currentRing) > 1) continue;
-
-      const dist = getBfsDistance(currentPos, targetId, this.state.destroyedTiles);
-      if (dist === movement) {
-        validTargets.push(targetId);
+        const dist = getBfsDistance(currentPos, targetId, this.state.destroyedTiles);
+        if (dist === movement) targets.push(targetId);
       }
-    }
+      if (targets.length > 0) {
+        validTargets[pawn.id] = targets;
+        totalValidMoves += targets.length;
+      }
+    });
 
-    // 3. No valid moves → auto-pass
-    if (validTargets.length === 0) {
-      this.addLog(
-        `No valid tiles at distance ${movement} in adjacent rings for Player ${playerId}! Turn passed.`,
-        'warning'
-      );
-
-      // DP penalty for forced pass
+    if (totalValidMoves === 0) {
+      this.addLog(`No valid moves for any pawns for Player ${playerId}! Turn passed.`, 'warning');
       this.addDP(playerId, -2, 'Turn auto-passed');
       this.updateCombo(playerId, 'break');
-
       this.state.activeRoll = null;
       let collapsedTilesThisTurn = [];
-      const eliminatedThisTurn = [];
-
+      let eliminatedThisTurn = [];
       let dpEventsForPass = [];
+
       if (this.state.currentTurn === 'A') {
         this.state.currentTurn = 'B';
       } else {
         const collapseReport = this.triggerCollapse();
         collapsedTilesThisTurn = collapseReport.collapsedTiles;
-        collapseReport.eliminated.forEach(pId => eliminatedThisTurn.push(pId));
+        eliminatedThisTurn = collapseReport.eliminated;
         this._awardCollapseDP(eliminatedThisTurn);
         this.checkWinConditions();
-        if (!this.state.isGameOver) {
-          this.state.currentTurn = 'A';
-          this.state.round++;
-          this.addLog(`--- Round ${this.state.round} Starts ---`, 'system');
-
-          this.checkTargetCompletion('A', { roundEnded: true, wasBumped: this.state.players.A.bumpedThisRound, dpEvents: dpEventsForPass });
-          this.checkTargetCompletion('B', { roundEnded: true, wasBumped: this.state.players.B.bumpedThisRound, dpEvents: dpEventsForPass });
-          
-          this.state.players.A.bumpedThisRound = false;
-          this.state.players.B.bumpedThisRound = false;
-
-          this.generateTarget('A');
-          this.generateTarget('B');
-        }
+        if (!this.state.isGameOver) this._advanceRound();
       }
 
       return {
         state: this.getState(),
         animationReport: {
           roll, isOverdrive, isLeap, playerId,
-          validTargets: [],
-          type: 'pass_phase',
-          collapsedTiles: collapsedTilesThisTurn,
-          eliminated: eliminatedThisTurn,
-          dpEvents: dpEventsForPass
+          validTargets: {}, type: 'pass_phase',
+          collapsedTiles: collapsedTilesThisTurn, eliminated: eliminatedThisTurn, dpEvents: dpEventsForPass
         }
       };
     }
 
-    // 4. Save active roll
     this.state.activeRoll = { roll, isOverdrive, isLeap, movement, validTargets };
-
     return {
       state: this.getState(),
-      animationReport: {
-        roll, isOverdrive, isLeap, playerId,
-        validTargets,
-        type: 'roll_phase'
-      }
+      animationReport: { roll, isOverdrive, isLeap, playerId, validTargets, type: 'roll_phase' }
     };
   }
 
-  // ─── Tile Selection & Movement (Phase 2 of a turn) ─────────────────────────
-
-  selectTile(playerId, targetTileId) {
-    if (this.state.isGameOver) {
-      return { state: this.getState(), error: 'Game is already over' };
-    }
-    if (playerId !== this.state.currentTurn) {
-      return { state: this.getState(), error: 'Not your turn' };
-    }
-    if (!this.state.activeRoll) {
-      return { state: this.getState(), error: 'Must roll dice first' };
-    }
-    if (!this.state.activeRoll.validTargets.includes(targetTileId)) {
+  selectTile(playerId, pawnId, targetTileId) {
+    if (this.state.isGameOver) return { state: this.getState(), error: 'Game over' };
+    if (playerId !== this.state.currentTurn) return { state: this.getState(), error: 'Not your turn' };
+    if (!this.state.activeRoll) return { state: this.getState(), error: 'Must roll' };
+    
+    const validTargets = this.state.activeRoll.validTargets[pawnId];
+    if (!validTargets || !validTargets.includes(targetTileId)) {
       return { state: this.getState(), error: 'Invalid target tile selection' };
     }
 
     const player = this.state.players[playerId];
-    const startPosition = player.position;
-
+    const pawn = player.pawns.find(p => p.id === pawnId);
+    
     const opponentId = playerId === 'A' ? 'B' : 'A';
     const opponent = this.state.players[opponentId];
 
-    const startPosA = this.state.players.A.position;
-    const startPosB = this.state.players.B.position;
-
-    // Track DP events for Phaser floating text animation
     const dpEvents = [];
     const triggeredCombos = [];
-
     let bumpOccurred = false;
-    let bumpDistance = 0;
     let bumpedIntoAbyss = false;
+    let bumpedPawnId = null;
     const eliminatedThisTurn = [];
     let collapsedTilesThisTurn = [];
 
-    // ── 1. Move player ──────────────────────────────────────────────────────
-    player.position = targetTileId;
-    this.addLog(`Player ${playerId} moved to Tile ${targetTileId}.`, 'system');
+    pawn.position = targetTileId;
+    this.addLog(`Player ${playerId} moved Pawn ${pawnId} to Tile ${targetTileId}.`, 'system');
 
-    // DP: ring progress
     const dpBefore = player.dp;
-    const oldRing = player.previousRing;
-    this.checkRingProgress(playerId);
+    this.checkRingProgress(playerId, pawn);
     const dpAfter = player.dp;
-    if (dpAfter > dpBefore) {
-      dpEvents.push({ playerId, amount: dpAfter - dpBefore, label: `+${dpAfter - dpBefore} DP` });
-    }
+    if (dpAfter > dpBefore) dpEvents.push({ playerId, amount: dpAfter - dpBefore, label: `+${dpAfter - dpBefore} DP` });
 
-    // ── 2. Bump if landing on opponent ─────────────────────────────────────
-    if (targetTileId === opponent.position) {
-      bumpOccurred = true;
-      const maxBumpDistance = this.state.activeRoll.isOverdrive ? 6 : 3;
-      const opponentOrigPos = opponent.position;
+    if (targetTileId === 61) {
+      pawn.isHome = true;
+      pawn.position = null;
+      this.addLog(`Pawn ${pawnId} reached the Core and Ascended!`, 'win');
+      this.addDP(playerId, 25, 'Pawn ascended to The Core!');
+      dpEvents.push({ playerId, amount: 25, label: `+25 DP ASCEND!` });
+    } else {
+      let bumpedPawn = null;
+      opponent.pawns.forEach(op => {
+        if (op.isAlive && !op.isHome && op.position === targetTileId) bumpedPawn = op;
+      });
 
-      // Walk backward step-by-step — stop at first destroyed or off-board tile
-      let opponentNewPos = opponentOrigPos;
-      let actualDistance = 0;
-      let hitDestroyed = false;
-      let fellOffBoard = false;
+      if (bumpedPawn) {
+        bumpOccurred = true;
+        bumpedPawnId = bumpedPawn.id;
+        
+        const spawnPos = bumpedPawn.spawnPos;
+        bumpedPawn.position = spawnPos;
+        
+        this.addLog(`BUMP! Pawn ${pawnId} landed on Opponent Pawn ${bumpedPawnId}. Opponent sent back to spawn!`, 'bump');
+        player.bumpsLanded++;
+        opponent.bumpsReceived++;
+        opponent.bumpedThisRound = true;
 
-      for (let step = 1; step <= maxBumpDistance; step++) {
-        const nextPos = opponentOrigPos - step;
-        if (nextPos < 1) {
-          fellOffBoard = true;
-          actualDistance = step;
-          break;
+        this.addDP(playerId, 15, 'Bump landed (sent to spawn)!');
+        dpEvents.push({ playerId, amount: 15, label: '+15 DP BUMP!' });
+
+        const comboAction = this.state.activeRoll.isOverdrive ? 'overdrive' : 'bump';
+        const combo = this.updateCombo(playerId, comboAction);
+        if (combo) triggeredCombos.push({ playerId, ...combo });
+
+        this.updateCombo(opponentId, 'break');
+        this.addDP(opponentId, -5, 'Pawn bumped back to spawn');
+        dpEvents.push({ playerId: opponentId, amount: -5, label: '-5 DP' });
+
+        if (this.state.destroyedTiles[spawnPos]) {
+          bumpedPawn.isAlive = false;
+          bumpedIntoAbyss = true;
+          eliminatedThisTurn.push(opponentId);
+          this.addLog(`Pawn ${bumpedPawnId} was sent back to spawn Tile ${spawnPos}, but it was destroyed! Pawn eliminated!`, 'elimination');
+          this.addDP(playerId, 25, 'Opponent pawn eliminated by bump into abyss!');
+          dpEvents.push({ playerId, amount: 25, label: '+25 DP KILL!' });
         }
-        if (this.state.destroyedTiles[nextPos]) {
-          opponentNewPos = nextPos;
-          hitDestroyed = true;
-          actualDistance = step;
-          break;
-        }
-        opponentNewPos = nextPos;
-        actualDistance = step;
-      }
-
-      bumpDistance = actualDistance;
-      this.addLog(
-        `BUMP! Player ${playerId} landed on Player ${opponentId}. Opponent knocked back -${actualDistance} tile${actualDistance !== 1 ? 's' : ''}.`,
-        'bump'
-      );
-
-      // Stats
-      player.bumpsLanded++;
-      opponent.bumpsReceived++;
-      opponent.bumpedThisRound = true;
-
-      // DP: bump landed
-      this.addDP(playerId, 10, 'Bump landed!');
-      dpEvents.push({ playerId, amount: 10, label: '+10 DP BUMP!' });
-
-      const comboAction = this.state.activeRoll.isOverdrive ? 'overdrive' : 'bump';
-      const combo = this.updateCombo(playerId, comboAction);
-      if (combo) triggeredCombos.push({ playerId, ...combo });
-
-      this.updateCombo(opponentId, 'break'); // Opponent combo breaks when bumped
-
-      // DP: opponent receives bump penalty
-      this.addDP(opponentId, -3, 'Received a bump');
-      dpEvents.push({ playerId: opponentId, amount: -3, label: '-3 DP' });
-
-      if (fellOffBoard) {
-        opponent.isAlive = false;
-        opponent.position = Math.max(1, opponentOrigPos - actualDistance + 1);
-        bumpedIntoAbyss = true;
-        eliminatedThisTurn.push(opponentId);
-        this.addLog(`Player ${opponentId} was knocked off the outer ring and fell into the Abyss!`, 'elimination');
-
-        // DP: bump eliminated opponent
-        this.addDP(playerId, 25, 'Opponent eliminated by bump!');
-        dpEvents.push({ playerId, amount: 25, label: '+25 DP KILL!' });
-
-      } else if (hitDestroyed) {
-        opponent.isAlive = false;
-        opponent.position = opponentNewPos;
-        bumpedIntoAbyss = true;
-        eliminatedThisTurn.push(opponentId);
-        this.addLog(`Player ${opponentId} slid into destroyed Tile ${opponentNewPos} and fell into the Abyss!`, 'elimination');
-
-        this.addDP(playerId, 25, 'Opponent eliminated by bump!');
-        dpEvents.push({ playerId, amount: 25, label: '+25 DP KILL!' });
-
-      } else {
-        opponent.position = opponentNewPos;
-
-        // DP: forced opponent to outer ring?
-        const opponentNewRing = getRingNumber(opponentNewPos);
-        const opponentOldRing = getRingNumber(opponentOrigPos);
-        if (opponentNewRing > opponentOldRing) {
-          this.addDP(playerId, 15, `Forced opponent back to Ring ${opponentNewRing}!`);
-          dpEvents.push({ playerId, amount: 15, label: '+15 DP PUSH!' });
-        }
-
-        // Update opponent's previousRing after being pushed
-        opponent.previousRing = opponentNewRing;
       }
     }
 
-    // Target check for move/bump
-    this.checkTargetCompletion(playerId, {
-      bumpedOpponent: bumpOccurred,
-      isOverdrive: this.state.activeRoll.isOverdrive,
-      opponentNewRing: bumpOccurred && !bumpedIntoAbyss ? getRingNumber(opponent.position) : null,
-      dpEvents,
-      triggeredCombos,
-      oldRing,
-      newRing: getRingNumber(player.position),
-      startPosition
-    });
+    this.checkTargetCompletion(playerId, { bumpedOpponent: bumpOccurred, pawn, dpEvents, triggeredCombos });
 
-    // Grab any combo triggered by checkRingProgress
     if (player.latestCombo) {
       triggeredCombos.push({ playerId, ...player.latestCombo });
       player.latestCombo = null;
     }
 
-    // ── 3. Clear active roll ────────────────────────────────────────────────
     this.state.activeRoll = null;
-
-    // ── 4. Win condition check (domination check first) ────────────────────
     this.checkWinConditions();
 
-    // ── 5. Phase transition ────────────────────────────────────────────────
     if (!this.state.isGameOver) {
       if (this.state.currentTurn === 'A') {
         this.state.currentTurn = 'B';
       } else {
-        // Player B finished → Collapse Phase → Next Round
         const collapseReport = this.triggerCollapse();
         collapsedTilesThisTurn = collapseReport.collapsedTiles;
-
-        collapseReport.eliminated.forEach(pId => {
-          if (!eliminatedThisTurn.includes(pId)) eliminatedThisTurn.push(pId);
-        });
-
+        collapseReport.eliminated.forEach(pId => eliminatedThisTurn.push(pId));
         this._awardCollapseDP(collapseReport.eliminated);
         this.checkWinConditions();
-
-        if (!this.state.isGameOver) {
-          this.state.currentTurn = 'A';
-          this.state.round++;
-          this.addLog(`--- Round ${this.state.round} Starts ---`, 'system');
-
-          this.checkTargetCompletion('A', { roundEnded: true, wasBumped: this.state.players.A.bumpedThisRound, dpEvents, triggeredCombos });
-          this.checkTargetCompletion('B', { roundEnded: true, wasBumped: this.state.players.B.bumpedThisRound, dpEvents, triggeredCombos });
-          
-          this.state.players.A.bumpedThisRound = false;
-          this.state.players.B.bumpedThisRound = false;
-
-          this.generateTarget('A');
-          this.generateTarget('B');
-        }
+        if (!this.state.isGameOver) this._advanceRound();
       }
     }
+
+    const endPositions = { A: {}, B: {} };
+    this.state.players.A.pawns.forEach(p => { if (p.isAlive && !p.isHome) endPositions.A[p.id] = p.position; });
+    this.state.players.B.pawns.forEach(p => { if (p.isAlive && !p.isHome) endPositions.B[p.id] = p.position; });
 
     return {
       state: this.getState(),
       animationReport: {
-        playerId,
-        targetTileId,
-        startPositions: { A: startPosA, B: startPosB },
-        endPositions: { A: this.state.players.A.position, B: this.state.players.B.position },
-        bump: bumpOccurred ? { opponentId, distance: bumpDistance, intoAbyss: bumpedIntoAbyss } : null,
-        eliminated: eliminatedThisTurn,
-        collapsedTiles: collapsedTilesThisTurn,
-        dpEvents,
-        combos: triggeredCombos,
-        type: 'move_phase'
+        playerId, pawnId, targetTileId, endPositions,
+        bump: bumpOccurred ? { opponentPawnId: bumpedPawnId, intoAbyss: bumpedIntoAbyss } : null,
+        ascended: targetTileId === 61, eliminated: eliminatedThisTurn, collapsedTiles: collapsedTilesThisTurn,
+        dpEvents, combos: triggeredCombos, type: 'move_phase'
       }
     };
   }
 
-  // ─── Collapse Phase ─────────────────────────────────────────────────────────
+  _advanceRound() {
+    this.state.currentTurn = 'A';
+    this.state.round++;
+    this.addLog(`--- Round ${this.state.round} Starts ---`, 'system');
+    this.checkTargetCompletion('A', { roundEnded: true, wasBumped: this.state.players.A.bumpedThisRound });
+    this.checkTargetCompletion('B', { roundEnded: true, wasBumped: this.state.players.B.bumpedThisRound });
+    this.state.players.A.bumpedThisRound = false;
+    this.state.players.B.bumpedThisRound = false;
+    this.generateTarget('A');
+    this.generateTarget('B');
+  }
 
   triggerCollapse() {
     const collapsedTiles = [];
     const eliminated = [];
 
-    // --- Phase B: Destroy previously warned tiles ---
     if (this.state.warnedTiles.length > 0) {
       this.state.warnedTiles.forEach(tileId => {
         this.state.destroyedTiles[tileId] = true;
         collapsedTiles.push(tileId);
-        const ring = getRingNumber(tileId);
-        this.addLog(`Tile ${tileId} (Ring ${ring}) collapsed and is destroyed forever!`, 'collapse');
+        this.addLog(`Tile ${tileId} collapsed and is destroyed forever!`, 'collapse');
 
         Object.keys(this.state.players).forEach(pId => {
-          const p = this.state.players[pId];
-          if (p.isAlive && p.position === tileId) {
-            p.isAlive = false;
-            eliminated.push(pId);
-            this.addLog(`Player ${pId} was standing on collapsing Tile ${tileId} and fell into the Abyss!`, 'elimination');
-          }
+          this.state.players[pId].pawns.forEach(pawn => {
+            if (pawn.isAlive && !pawn.isHome && pawn.position === tileId) {
+              pawn.isAlive = false;
+              eliminated.push(pId);
+              this.addLog(`Pawn ${pawn.id} was standing on collapsing Tile ${tileId} and fell into the Abyss!`, 'elimination');
+            }
+          });
         });
       });
       this.state.warnedTiles = [];
     }
 
-    // --- Phase A: Warn new tiles ---
     const activeTiles = [];
-    for (let i = 1; i <= 61; i++) {
-      if (!this.state.destroyedTiles[i] && i !== 61) { // Center tile 61 never collapses
-        // Prevent active Hunt Target tiles from collapsing to avoid unfair deaths
-        let isTargetTile = false;
-        Object.values(this.state.players).forEach(p => {
-          if (p.isAlive && p.huntTarget && p.huntTarget.type === 'land_tile' && p.huntTarget.param === i) {
-            isTargetTile = true;
-          }
-        });
-
-        if (!isTargetTile) {
-          activeTiles.push(i);
-        }
-      }
+    for (let i = 1; i <= 60; i++) {
+      if (!this.state.destroyedTiles[i]) activeTiles.push(i);
     }
 
     if (activeTiles.length > 0) {
@@ -675,73 +435,48 @@ export class GameServer {
     return { collapsedTiles, eliminated };
   }
 
-  /**
-   * Award DP to surviving player when collapse eliminates the opponent.
-   * Called after collapse phase resolves.
-   */
   _awardCollapseDP(eliminated) {
     if (eliminated.length === 0) return;
     const allPlayers = ['A', 'B'];
     eliminated.forEach(deadId => {
       const survivorId = allPlayers.find(id => id !== deadId);
       if (survivorId && this.state.players[survivorId]?.isAlive) {
-        if (this.state.players[deadId].position === 61) {
-          this.addDP(survivorId, 20, 'Opponent eliminated by collapse on Center Tile!');
-        } else {
-          this.addDP(survivorId, 15, 'Opponent eliminated by collapse!');
-        }
+        this.addDP(survivorId, 15, 'Opponent pawn eliminated by collapse!');
       }
     });
   }
 
-  // ─── Win Conditions ─────────────────────────────────────────────────────────
-
   checkWinConditions() {
+    if (this.state.isGameOver) return;
     const pA = this.state.players.A;
     const pB = this.state.players.B;
 
-    if (this.state.isGameOver) return;
+    pA.isAlive = pA.pawns.some(p => p.isAlive);
+    pB.isAlive = pB.pawns.some(p => p.isAlive);
 
-    // ── Domination Win: first to 100 DP ──────────────────────────────────
-    if (pA.dp >= 100 && pB.dp >= 100) {
-      // Both hit 100+ simultaneously → highest wins; tie = draw
-      if (pA.dp > pB.dp) {
-        this._setWinner('A', 'domination');
-      } else if (pB.dp > pA.dp) {
-        this._setWinner('B', 'domination');
-      } else {
-        this._setDraw('domination');
-      }
-      return;
-    }
-    if (pA.dp >= 100) {
-      this._setWinner('A', 'domination');
-      return;
-    }
-    if (pB.dp >= 100) {
-      this._setWinner('B', 'domination');
-      return;
-    }
+    const aHome = pA.pawns.filter(p => p.isHome).length;
+    const aDead = pA.pawns.filter(p => !p.isAlive).length;
+    const bHome = pB.pawns.filter(p => p.isHome).length;
+    const bDead = pB.pawns.filter(p => !p.isAlive).length;
 
-    // ── Survival Win: last alive ──────────────────────────────────────────
-    if (!pA.isAlive && !pB.isAlive) {
-      this._setDraw('survival');
-    } else if (!pA.isAlive) {
-      this._setWinner('B', 'survival');
-    } else if (!pB.isAlive) {
-      this._setWinner('A', 'survival');
-    }
+    const aWinsAscension = aHome > 0 && (aHome + aDead === 4);
+    const bWinsAscension = bHome > 0 && (bHome + bDead === 4);
+
+    if (aWinsAscension && bWinsAscension) return this._setDraw('ascension');
+    if (aWinsAscension) return this._setWinner('A', 'ascension');
+    if (bWinsAscension) return this._setWinner('B', 'ascension');
+
+    if (!pA.isAlive && !pB.isAlive) return this._setDraw('survival');
+    if (!pA.isAlive) return this._setWinner('B', 'survival');
+    if (!pB.isAlive) return this._setWinner('A', 'survival');
   }
 
   _setWinner(winnerId, winType) {
     this.state.isGameOver = true;
     this.state.winner = winnerId;
     this.state.winType = winType;
-    const typeLabel = winType === 'domination' ? 'DOMINATION WIN 🏆' : 'SURVIVAL WIN 💀';
-    this.addLog(
-      `Game Over! Player ${winnerId} wins by ${typeLabel}! (${this.state.players[winnerId].dp} DP)`,
-      'win'
-    );
+    const typeLabel = winType === 'ascension' ? 'ASCENSION WIN 👑' : 'SURVIVAL WIN 💀';
+    this.addLog(`Game Over! Player ${winnerId} wins by ${typeLabel}!`, 'win');
   }
 
   _setDraw(winType) {

@@ -324,7 +324,7 @@ export default function GameInterface() {
   const logEndRef = useRef(null);
 
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [gameState.combatLog, logsExpanded]);
 
   useEffect(() => {
@@ -415,10 +415,10 @@ export default function GameInterface() {
       }
     });
 
-    game.events.on('TILE_SELECTED', (tileId) => {
+    game.events.on('TILE_SELECTED', ({ tileId, pawnId }) => {
       const server = serverRef.current;
       const activePlayer = server.getState().currentTurn;
-      const moveResult = server.selectTile(activePlayer, tileId);
+      const moveResult = server.selectTile(activePlayer, pawnId, tileId);
       game.events.emit('MOVE_RESULT', moveResult);
       setIsAnimating(true);
       setIsWaitingForTileSelection(false);
@@ -459,8 +459,8 @@ export default function GameInterface() {
       const { roll, isOverdrive, isLeap, playerId } = result.animationReport;
       setLastPassInfo({
         playerId, roll,
-        label: isOverdrive ? `Overdrive (${roll})` : isLeap ? `Leap (7)` : `${roll}`,
-        movement: isOverdrive ? 8 : isLeap ? 7 : roll
+        label: isOverdrive ? `Overdrive (${roll})` : isLeap ? `Leap (5)` : `${roll}`,
+        movement: isOverdrive ? 6 : isLeap ? 5 : roll
       });
       handleReportSounds(result.animationReport);
       setGameState(serverRef.current.getState());
@@ -535,13 +535,13 @@ export default function GameInterface() {
 
           <div className="flex flex-col gap-2 font-mono">
             <div className="flex justify-between text-xs">
-              <span className="text-slate-500">POSITION</span>
-              <span className={`${posColor} font-bold`}>Tile {player.position}/61</span>
+              <span className="text-slate-500">PAWNS HOME</span>
+              <span className={`${posColor} font-bold`}>{player.pawns.filter(p => p.isHome).length}/4 👑</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-slate-500">STATUS</span>
+              <span className="text-slate-500">PAWNS ALIVE</span>
               <span className={player.isAlive ? 'text-green-400 font-bold' : 'text-red-500 font-bold animate-pulse'}>
-                {player.isAlive ? 'ACTIVE' : 'FALLEN'}
+                {player.pawns.filter(p => p.isAlive && !p.isHome).length} / 4
               </span>
             </div>
             <div className="flex justify-between text-xs">
@@ -629,7 +629,7 @@ export default function GameInterface() {
                       : 'bg-orange-600/10 hover:bg-orange-600/20 border-orange-500 text-orange-300 hover:shadow-[0_0_15px_rgba(249,115,22,0.35)]'
                 }`}
             >
-              {isWaitingForTileSelection ? 'Select Hex...' : isAnimating ? 'Rolling...' : 'ROLL D8'}
+              {isWaitingForTileSelection ? 'Select Hex...' : isAnimating ? 'Rolling...' : 'ROLL D6'}
             </button>
           ) : (
             <div className="w-full py-4 text-center text-xs font-mono text-slate-600 border border-slate-900 rounded-lg select-none">
@@ -784,7 +784,7 @@ export default function GameInterface() {
               <div className="flex flex-col gap-2">
                 <span className="font-bold text-cyan-400">🎲 Turn Flow & Rolling:</span>
                 <ul className="list-disc pl-5 flex flex-col gap-1 text-slate-400 text-xs">
-                  <li>Roll D8. Move exactly that many BFS grid steps.</li>
+                  <li>Roll D6. Move exactly that many BFS grid steps.</li>
                   <li>Ring Constraint: Only move to same ring or ±1 ring.</li>
                   <li>Roll 8 (Overdrive) → bump pushes opponent -6 tiles.</li>
                   <li>No valid target → turn auto-passes (-2 DP).</li>

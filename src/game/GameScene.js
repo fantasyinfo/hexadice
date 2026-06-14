@@ -217,29 +217,22 @@ export class GameScene extends Phaser.Scene {
     graphics.fillPath();
   }
 
-  // Create player circle tokens
   createPlayers() {
-    // Cleanup old if re-creating
     if (this.playerTokens) {
-      if (this.playerTokens.A) this.playerTokens.A.destroy();
-      if (this.playerTokens.B) this.playerTokens.B.destroy();
+      Object.values(this.playerTokens).forEach(p => p.destroy());
     }
 
-    // Player A
-    const tokenA = this.createTokenContainer(this.playerColors.A, 'A');
-    // Player B
-    const tokenB = this.createTokenContainer(this.playerColors.B, 'B');
+    this.playerTokens = {};
 
-    this.playerTokens = { A: tokenA, B: tokenB };
-    this.boardContainer.add(tokenA);
-    this.boardContainer.add(tokenB);
-
-    // Initial position placement (both start at Tile 1)
-    const startTile = this.tiles[0];
-    const offsets = this.getPlayerOffsets(1);
-    
-    tokenA.setPosition(startTile.x + offsets.A.x, startTile.y + offsets.A.y);
-    tokenB.setPosition(startTile.x + offsets.B.x, startTile.y + offsets.B.y);
+    ['A', 'B'].forEach(playerId => {
+      for (let i = 1; i <= 4; i++) {
+        const pawnId = `${playerId}${i}`;
+        const color = this.playerColors[playerId];
+        const token = this.createTokenContainer(color, `${pawnId}`);
+        this.playerTokens[pawnId] = token;
+        this.boardContainer.add(token);
+      }
+    });
   }
 
   // Creates the visual circle representation of the player
@@ -272,24 +265,35 @@ export class GameScene extends Phaser.Scene {
     return container;
   }
 
-  // Offsets players so they do not overlap when standing on the same tile
-  getPlayerOffsets(tileId, hasA = true, hasB = true) {
-    const posA = this.state?.players?.A?.position || tileId;
-    const posB = this.state?.players?.B?.position || tileId;
-    
-    if (posA === posB) {
-      return {
-        A: { x: -8, y: -4 },
-        B: { x: 8, y: 4 }
-      };
+  // Offsets pawns so they do not overlap when standing on the same tile
+  getPlayerOffsets(tileId) {
+    const pawnsOnTile = [];
+    if (this.state && this.state.players) {
+      ['A', 'B'].forEach(pId => {
+        this.state.players[pId].pawns.forEach(pawn => {
+          if (pawn.position === tileId && pawn.isAlive && !pawn.isHome) {
+            pawnsOnTile.push(pawn.id);
+          }
+        });
+      });
     }
-    return {
-      A: { x: 0, y: 0 },
-      B: { x: 0, y: 0 }
-    };
+
+    const offsets = {};
+    if (pawnsOnTile.length === 1) {
+      offsets[pawnsOnTile[0]] = { x: 0, y: 0 };
+    } else if (pawnsOnTile.length > 1) {
+      const radius = 8;
+      pawnsOnTile.forEach((pawnId, index) => {
+        const angle = (index / pawnsOnTile.length) * Math.PI * 2;
+        offsets[pawnId] = {
+          x: Math.cos(angle) * radius,
+          y: Math.sin(angle) * radius
+        };
+      });
+    }
+    return offsets;
   }
 
-  // Synchronize board without animations
   handleSyncState(serverState) {
     this.state = serverState;
     this.isAnimating = false;
@@ -338,44 +342,46 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    // Reset player positions
-    Object.keys(serverState.players).forEach(pId => {
-      const player = serverState.players[pId];
-      const token = this.playerTokens[pId];
-      
-      if (!player.isAlive) {
-        token.setVisible(false);
-      } else {
-        token.setVisible(true);
-        const tile = this.tiles[player.position - 1];
-        const offsets = this.getPlayerOffsets(player.position);
-        token.setPosition(tile.x + offsets[pId].x, tile.y + offsets[pId].y);
-      }
+    if (!this.playerTokens) this.createPlayers();
+
+    Object.keys(this.playerTokens).forEach(pawnId => {
+       const token = this.playerTokens[pawnId];
+       const playerId = pawnId[0];
+       const pawn = serverState.players[playerId].pawns.find(p => p.id === pawnId);
+       
+       if (!pawn || !pawn.isAlive || pawn.isHome) {
+          token.setVisible(false);
+       } else {
+          token.setVisible(true);
+          const tile = this.tiles[pawn.position - 1];
+          if (tile) {
+            const offsets = this.getPlayerOffsets(pawn.position);
+            token.setPosition(tile.x + (offsets[pawnId]?.x || 0), tile.y + (offsets[pawnId]?.y || 0));
+          }
+       }
     });
   }
 
   // Highlights valid target tiles and registers click listeners
-  highlightTiles(tileIds) {
+  highlightTiles(tileIds, type = 'target') {
     this.clearHighlights();
     this.highlightedTileIds = tileIds;
 
     const points = [];
     for (let i = 0; i < 6; i++) {
       const angle = (Math.PI / 180) * (60 * i - 30);
-      points.push({
-        x: this.hexSize * Math.cos(angle),
-        y: this.hexSize * Math.sin(angle)
-      });
+      points.push({ x: this.hexSize * Math.cos(angle), y: this.hexSize * Math.sin(angle) });
     }
+
+    const color = type === 'pawn' ? 0xffcc00 : 0x00ffcc;
 
     tileIds.forEach(tileId => {
       const tObj = this.tileObjects[tileId];
       if (!tObj) return;
 
-      // Draw green highlight glow border
       const glow = this.add.graphics();
-      glow.lineStyle(3, 0x00ffcc, 0.85);
-      glow.fillStyle(0x00ffcc, 0.15); // Transparent green fill
+      glow.lineStyle(3, color, 0.85);
+      glow.fillStyle(color, 0.15);
 
       glow.beginPath();
       glow.moveTo(points[0].x, points[0].y);
@@ -439,9 +445,29 @@ export class GameScene extends Phaser.Scene {
   }
 
   selectTargetTile(tileId) {
-    this.clearHighlights();
-    this.clearGuidePath();
-    this.game.events.emit('TILE_SELECTED', tileId);
+    if (this.activePawnTargets) {
+       let clickedPawnId = null;
+       Object.keys(this.activePawnTargets).forEach(pawnId => {
+          const playerId = pawnId[0];
+          const player = this.state.players[playerId];
+          const pawn = player.pawns.find(p => p.id === pawnId);
+          if (pawn && pawn.position === tileId) clickedPawnId = pawnId;
+       });
+       
+       if (clickedPawnId) {
+          this.selectedPawnId = clickedPawnId;
+          this.highlightTiles(this.activePawnTargets[clickedPawnId], 'target');
+          return;
+       }
+       
+       if (this.selectedPawnId && this.activePawnTargets[this.selectedPawnId].includes(tileId)) {
+          const pawnId = this.selectedPawnId;
+          this.activePawnTargets = null;
+          this.selectedPawnId = null;
+          this.clearHighlights();
+          this.game.events.emit('TILE_SELECTED', { tileId, pawnId });
+       }
+    }
   }
 
   clearHighlights() {
@@ -547,7 +573,7 @@ export class GameScene extends Phaser.Scene {
     this.isAnimating = true;
     this.game.events.emit('ANIMATION_START');
 
-    // 1. Play D8 Roll Animation (Floating Text / Shake)
+    // 1. Play D6 Roll Animation (Floating Text / Shake)
     await this.animateDiceRoll(animationReport);
 
     if (animationReport.type === 'pass_phase') {
@@ -594,8 +620,17 @@ export class GameScene extends Phaser.Scene {
       this.isAnimating = false;
       this.game.events.emit('ANIMATION_COMPLETE');
     } else {
-      // Highlight valid targets
-      this.highlightTiles(animationReport.validTargets);
+      this.activePawnTargets = animationReport.validTargets;
+      this.selectedPawnId = null;
+      
+      const pawnTilesToHighlight = [];
+      Object.keys(this.activePawnTargets).forEach(pawnId => {
+         const player = this.state.players[pawnId[0]];
+         const pawn = player.pawns.find(p => p.id === pawnId);
+         if (pawn) pawnTilesToHighlight.push(pawn.position);
+      });
+      
+      this.highlightTiles(pawnTilesToHighlight, 'pawn');
       this.isAnimating = false;
       this.game.events.emit('ROLL_ANIMATION_COMPLETE');
     }
@@ -690,9 +725,18 @@ export class GameScene extends Phaser.Scene {
   // Floating rolling numbers effect
   animateDiceRoll(report) {
     return new Promise((resolve) => {
-      const activePlayerToken = this.playerTokens[report.playerId];
+      let activePlayerToken = null;
+      for (let i = 1; i <= 4; i++) {
+         if (this.playerTokens[`${report.playerId}${i}`] && this.playerTokens[`${report.playerId}${i}`].visible) {
+             activePlayerToken = this.playerTokens[`${report.playerId}${i}`];
+             break;
+         }
+      }
       
-      const rollText = this.add.text(activePlayerToken.x, activePlayerToken.y - 30, '🎲 Rolling...', {
+      const x = activePlayerToken ? activePlayerToken.x : 0;
+      const y = activePlayerToken ? activePlayerToken.y - 30 : -30;
+      
+      const rollText = this.add.text(x, y, '🎲 Rolling...', {
         fontFamily: '"Courier New", Courier, monospace',
         fontSize: '14px',
         fontWeight: 'bold',
@@ -715,10 +759,10 @@ export class GameScene extends Phaser.Scene {
           } else {
             let resultString = `🎲 ${report.roll}`;
             if (report.isOverdrive) {
-              resultString = `🔥 OVERDRIVE D8! (${report.roll})`;
+              resultString = `🔥 OVERDRIVE D6! (${report.roll})`;
               rollText.setColor('#ff4500');
             } else if (report.isLeap) {
-              resultString = `🚀 LEAP! (7)`;
+              resultString = `🚀 LEAP! (5)`;
               rollText.setColor('#00ffff');
             }
             rollText.setText(resultString);
@@ -744,119 +788,102 @@ export class GameScene extends Phaser.Scene {
   // Walk step-by-step along the BFS path on the grid
   animatePlayerMove(report) {
     return new Promise((resolve) => {
-      const pId = report.playerId;
-      const token = this.playerTokens[pId];
-      const startPos = report.startPositions[pId];
-      const endPos = report.endPositions[pId];
+      const pawnId = report.pawnId;
+      const token = this.playerTokens[pawnId];
+      
+      const pawnBefore = this.state.players[report.playerId].pawns.find(p => p.id === pawnId);
+      const startPos = pawnBefore ? pawnBefore.position : null;
+      const endPos = report.targetTileId;
 
-      if (startPos === endPos) {
-        resolve();
+      if (!startPos || startPos === endPos || report.ascended) {
+        // If ascended, just fade out
+        if (report.ascended) {
+          this.tweens.add({ targets: token, alpha: 0, scale: 0, duration: 500, onComplete: resolve });
+        } else {
+          resolve();
+        }
         return;
       }
 
-      // BFS Pathfinder to get actual grid-based step-by-step path!
       const path = findGridPath(startPos, endPos, this.state.destroyedTiles);
 
-      // Create tween chain
-      let chain = this.tweens.add({
-        targets: token,
-        duration: 0
-      });
+      let chain = this.tweens.add({ targets: token, duration: 0 });
 
       path.forEach((tileId, index) => {
-        if (index === 0) return; // Skip starting tile
+        if (index === 0) return;
         const tile = this.tiles[tileId - 1];
-        
         const isLastStep = index === path.length - 1;
-        const offsets = isLastStep ? this.getPlayerOffsets(tile.id) : { A: { x:0, y:0 }, B: { x:0, y:0 } };
-        const offset = offsets[pId];
+        const offsets = isLastStep ? this.getPlayerOffsets(tile.id) : {};
+        const offset = offsets[pawnId] || { x:0, y:0 };
 
         chain = this.tweens.add({
           targets: token,
           x: tile.x + offset.x,
           y: tile.y + offset.y,
-          duration: 220, // Grid walk speed
+          duration: 220,
           ease: 'Quad.easeInOut',
           delay: 30,
-          onComplete: () => {
-            if (isLastStep) {
-              resolve();
-            }
-          }
+          onComplete: () => { if (isLastStep) resolve(); }
         });
       });
     });
   }
 
-  // Slides bumped player backward
+  // Slides bumped pawn backward
   animateBump(report) {
     return new Promise((resolve) => {
-      const { opponentId, distance, intoAbyss } = report.bump;
-      const opponentToken = this.playerTokens[opponentId];
-      const startPos = report.startPositions[opponentId];
-      const endPos = report.endPositions[opponentId];
-
-      // Build step-by-step tile path walking backward by tile ID.
-      // This matches exactly how the server walked (step by step, stopping at destroyed/edge).
-      const stepTiles = [];
-      for (let i = startPos; i >= endPos; i--) {
-        const tile = this.tiles[i - 1];
-        if (tile) stepTiles.push(tile);
+      const { opponentPawnId, intoAbyss } = report.bump;
+      const opponentToken = this.playerTokens[opponentPawnId];
+      
+      const opponentPlayerId = opponentPawnId[0];
+      const pawnBefore = this.state.players[opponentPlayerId].pawns.find(p => p.id === opponentPawnId);
+      
+      const startPos = pawnBefore ? pawnBefore.position : null;
+      const spawnPos = pawnBefore ? pawnBefore.spawnPos : null;
+      
+      if (!startPos || !spawnPos) {
+         resolve();
+         return;
       }
 
-      if (stepTiles.length <= 1) {
-        resolve();
-        return;
-      }
-
-      // Camera shake
       this.cameras.main.shake(150, 0.012);
 
-      // Combat text popup
-      const hitText = this.add.text(opponentToken.x, opponentToken.y - 20, `💥 BUMP -${distance}!`, {
+      const hitText = this.add.text(opponentToken.x, opponentToken.y - 20, `💥 BUMP!`, {
         fontFamily: 'Impact, Arial, sans-serif',
         fontSize: '18px',
         color: '#ff3333',
-        stroke: '#000000',
+        stroke: '#ffffff',
         strokeThickness: 3
       }).setOrigin(0.5);
-      this.boardContainer.add(hitText);
 
+      this.boardContainer.add(hitText);
       this.tweens.add({
         targets: hitText,
         y: hitText.y - 30,
         alpha: 0,
-        duration: 600,
+        scale: 1.5,
+        duration: 800,
         onComplete: () => hitText.destroy()
       });
 
-      // Animate backwards slides
-      let chain = this.tweens.add({
+      const spawnTile = this.tiles[spawnPos - 1];
+      const offsets = this.getPlayerOffsets(spawnPos);
+      const offset = offsets[opponentPawnId] || {x:0, y:0};
+
+      this.tweens.add({
         targets: opponentToken,
-        duration: 0
-      });
-
-      stepTiles.forEach((tile, index) => {
-        if (index === 0) return;
-        const isLastStep = index === stepTiles.length - 1;
-        const offsets = isLastStep ? this.getPlayerOffsets(tile.id) : { A: { x:0, y:0 }, B: { x:0, y:0 } };
-        const offset = offsets[opponentId];
-
-        chain = this.tweens.add({
-          targets: opponentToken,
-          x: tile.x + offset.x,
-          y: tile.y + offset.y,
-          duration: 120, // Slide back speed
-          ease: 'Quad.easeOut',
-          onComplete: () => {
-            if (isLastStep) {
-              if (intoAbyss) {
-                this.playEliminationEffect(opponentToken, "FALLEN!");
-              }
-              resolve();
-            }
+        x: spawnTile.x + offset.x,
+        y: spawnTile.y + offset.y,
+        duration: 400,
+        ease: 'Cubic.easeOut',
+        onComplete: () => {
+          if (intoAbyss) {
+            this.playEliminationEffect(opponentToken, "FALLEN!");
+            resolve();
+          } else {
+            resolve();
           }
-        });
+        }
       });
     });
   }
