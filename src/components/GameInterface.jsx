@@ -78,7 +78,7 @@ function MatchSummary({ gameState, onPlayAgain }) {
     { label: 'Domination Points', keyA: players.A.dp,           keyB: players.B.dp,           fmtA: `${players.A.dp} DP`,       fmtB: `${players.B.dp} DP`,       numeric: true },
     { label: 'Bumps Landed',      keyA: players.A.bumpsLanded,  keyB: players.B.bumpsLanded,  fmtA: players.A.bumpsLanded,       fmtB: players.B.bumpsLanded,       numeric: true },
     { label: 'Bumps Received',    keyA: players.A.bumpsReceived, keyB: players.B.bumpsReceived, fmtA: players.A.bumpsReceived,    fmtB: players.B.bumpsReceived,     numeric: true },
-    { label: 'Hunt Targets',      keyA: 0,                      keyB: 0,                      fmtA: '0 (Phase 2)',               fmtB: '0 (Phase 2)',               numeric: false },
+    { label: 'Hunt Targets',      keyA: players.A.huntTargetsHit, keyB: players.B.huntTargetsHit, fmtA: players.A.huntTargetsHit,    fmtB: players.B.huntTargetsHit,    numeric: true },
     { label: 'Result',            keyA: players.A.isAlive,      keyB: players.B.isAlive,      fmtA: players.A.isAlive ? '✅ Survived' : '💀 Fallen', fmtB: players.B.isAlive ? '✅ Survived' : '💀 Fallen', numeric: false },
   ];
 
@@ -427,6 +427,41 @@ export default function GameInterface() {
           </div>
 
           <DPBar dp={player.dp} color={color} flashing={dpFlash[pid]} />
+
+          {player.huntTarget && (
+            <div className={`mt-2 flex flex-col gap-1.5 p-3 rounded-lg border ${
+              !isMyTurn 
+                ? 'bg-slate-900/60 border-slate-800' 
+                : player.huntTarget.achieved 
+                  ? 'bg-emerald-950/40 border-emerald-800/60 shadow-[0_0_15px_rgba(16,185,129,0.15)]' 
+                  : 'bg-indigo-950/30 border-indigo-900/50'
+            }`}>
+              <div className="flex justify-between items-center">
+                <span className={`text-[9px] font-bold tracking-widest ${!isMyTurn ? 'text-slate-500' : 'text-indigo-400'}`}>HUNT TARGET</span>
+                {isMyTurn && (
+                  <span className={`text-[9px] font-black ${player.huntTarget.achieved ? 'text-emerald-400' : 'text-slate-400'}`}>
+                    +{player.huntTarget.dpReward} DP
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {!isMyTurn ? (
+                  <span className="text-xs font-mono text-slate-500 tracking-wider">[ HIDDEN ]</span>
+                ) : (
+                  <>
+                    <div className={`w-3 h-3 rounded-sm border flex items-center justify-center ${
+                      player.huntTarget.achieved ? 'bg-emerald-500 border-emerald-400 text-white' : 'border-slate-600 bg-slate-900'
+                    }`}>
+                      {player.huntTarget.achieved && <span className="text-[8px] font-black">✓</span>}
+                    </div>
+                    <span className={`text-xs font-mono font-medium ${player.huntTarget.achieved ? 'text-emerald-300' : 'text-slate-300'}`}>
+                      {player.huntTarget.label}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
           {gameState.activeRoll && gameState.currentTurn === pid && (
             <div className={`flex flex-col gap-1.5 p-3 ${rollBg} border rounded-lg text-center mt-1 animate-pulse font-mono`}>

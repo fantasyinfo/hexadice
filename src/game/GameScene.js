@@ -851,12 +851,23 @@ export class GameScene extends Phaser.Scene {
       if (!token) return;
 
       const isGain = event.amount > 0;
-      const color = isGain ? '#00ff88' : '#ff4444';
+      let color = isGain ? '#00ff88' : '#ff4444';
+      let fontSize = '13px';
+      let duration = 900;
+      let targetScale = 1.15;
+
+      if (event.isTarget) {
+        color = '#00ffff'; // Cyan
+        fontSize = '16px';
+        duration = 1500;
+        targetScale = 1.3;
+      }
+
       const offsetY = -35 - index * 18; // Stack multiple events vertically
 
       const dpText = this.add.text(token.x, token.y + offsetY, event.label, {
         fontFamily: '"Courier New", Courier, monospace',
-        fontSize: '13px',
+        fontSize: fontSize,
         fontWeight: 'bold',
         color,
         stroke: '#000000',
@@ -867,12 +878,12 @@ export class GameScene extends Phaser.Scene {
 
       this.tweens.add({
         targets: dpText,
-        y: dpText.y - 30,
+        y: dpText.y - 40,
         alpha: 0,
-        scaleX: 1.15,
-        scaleY: 1.15,
+        scaleX: targetScale,
+        scaleY: targetScale,
         delay: index * 120, // Stagger each event
-        duration: 900,
+        duration: duration,
         ease: 'Quad.easeOut',
         onComplete: () => dpText.destroy()
       });

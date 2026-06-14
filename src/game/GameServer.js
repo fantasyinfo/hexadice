@@ -29,6 +29,9 @@ export class GameServer {
           previousRing: getRingNumber(startA), // Track ring changes
           bumpsLanded: 0,               // stat for match summary
           bumpsReceived: 0,             // stat for match summary
+          huntTarget: null,
+          huntTargetsHit: 0,
+          bumpedThisRound: false,
         },
         B: {
           id: 'B', name: 'Player B', position: startB, isAlive: true,
@@ -36,6 +39,9 @@ export class GameServer {
           previousRing: getRingNumber(startB),
           bumpsLanded: 0,
           bumpsReceived: 0,
+          huntTarget: null,
+          huntTargetsHit: 0,
+          bumpedThisRound: false,
         }
       },
       destroyedTiles: {},   // tileId -> true
@@ -50,6 +56,8 @@ export class GameServer {
     };
     this.logCounter = 0;
     this.addLog(`Game started! Player A on Tile ${startA}, Player B on Tile ${startB}. First to 100 DP or last alive wins!`, 'system');
+    this.generateTarget('A');
+    this.generateTarget('B');
   }
 
   // ─── Logging ────────────────────────────────────────────────────────────────
@@ -62,6 +70,97 @@ export class GameServer {
       round: this.state.round,
       turn: this.state.currentTurn
     });
+  }
+
+  // ─── Hunt Target System ─────────────────────────────────────────────────────
+
+  generateTarget(playerId) {
+    const player = this.state.players[playerId];
+    if (!player || !player.isAlive) return;
+
+    const currentRing = getRingNumber(player.position);
+    const opponentId = playerId === 'A' ? 'B' : 'A';
+    const opponent = this.state.players[opponentId];
+    const opponentRing = getRingNumber(opponent.position);
+
+    const activeTiles = [];
+    for (let id = 1; id <= 61; id++) {
+      if (!this.state.destroyedTiles[id]) activeTiles.push(id);
+    }
+
+    const possibleTargets = [];
+
+    // 1. Reach Ring X (only if there are active tiles in that ring)
+    let targetRing = null;
+    if (currentRing === 4) targetRing = [2, 3][Math.floor(Math.random() * 2)];
+    else if (currentRing === 3) targetRing = [1, 2][Math.floor(Math.random() * 2)];
+    else if (currentRing === 2) targetRing = [1, 3][Math.floor(Math.random() * 2)];
+    else if (currentRing === 1) targetRing = [2, 3][Math.floor(Math.random() * 2)];
+
+    if (targetRing !== null) {
+      const ringTiles = getRingTiles(targetRing);
+      const hasActiveTileInRing = ringTiles.some(t => !this.state.destroyedTiles[t]);
+      if (hasActiveTileInRing) {
+        possibleTargets.push({ type: 'reach_ring', label: `Reach Ring ${targetRing}`, param: targetRing, dpReward: 15 });
+      }
+    }
+
+    // 2. Land on specific tile
+    if (activeTiles.length > 0) {
+      let targetTile = activeTiles[Math.floor(Math.random() * activeTiles.length)];
+      while (targetTile === player.position && activeTiles.length > 1) {
+        targetTile = activeTiles[Math.floor(Math.random() * activeTiles.length)];
+      }
+      possibleTargets.push({ type: 'land_tile', label: `Land on Tile ${targetTile}`, param: targetTile, dpReward: 10 });
+    }
+
+    // 3. Bump based (if opponent is alive)
+    if (opponent.isAlive) {
+      possibleTargets.push({ type: 'land_bump', label: 'Land a Bump this round', param: null, dpReward: 20 });
+      possibleTargets.push({ type: 'land_overdrive', label: 'Land an Overdrive bump', param: null, dpReward: 25 });
+      
+      if (opponentRing < 4) {
+        possibleTargets.push({ type: 'force_outer', label: 'Push opponent to Ring 4', param: null, dpReward: 20 });
+      }
+    }
+
+    // 4. Survive no bump
+    possibleTargets.push({ type: 'survive_no_bump', label: 'Survive without being bumped', param: null, dpReward: 8 });
+
+    const target = possibleTargets[Math.floor(Math.random() * possibleTargets.length)];
+    target.achieved = false;
+    player.huntTarget = target;
+  }
+
+  checkTargetCompletion(playerId, actionContext) {
+    const player = this.state.players[playerId];
+    if (!player || !player.isAlive || !player.huntTarget || player.huntTarget.achieved) return;
+
+    const target = player.huntTarget;
+    let achieved = false;
+
+    if (target.type === 'reach_ring') {
+      if (getRingNumber(player.position) === target.param) achieved = true;
+    } else if (target.type === 'land_tile') {
+      if (player.position === target.param) achieved = true;
+    } else if (target.type === 'land_bump') {
+      if (actionContext && actionContext.bumpedOpponent) achieved = true;
+    } else if (target.type === 'land_overdrive') {
+      if (actionContext && actionContext.bumpedOpponent && actionContext.isOverdrive) achieved = true;
+    } else if (target.type === 'force_outer') {
+      if (actionContext && actionContext.bumpedOpponent && actionContext.opponentNewRing === 4) achieved = true;
+    } else if (target.type === 'survive_no_bump') {
+      if (actionContext && actionContext.roundEnded && !actionContext.wasBumped) achieved = true;
+    }
+
+    if (achieved) {
+      target.achieved = true;
+      player.huntTargetsHit++;
+      this.addDP(playerId, target.dpReward, 'Hunt Target!');
+      if (actionContext && actionContext.dpEvents) {
+        actionContext.dpEvents.push({ playerId, amount: target.dpReward, label: `🎯 TARGET HIT! +${target.dpReward} DP`, isTarget: true });
+      }
+    }
   }
 
   // ─── DP System ──────────────────────────────────────────────────────────────
@@ -173,6 +272,7 @@ export class GameServer {
       let collapsedTilesThisTurn = [];
       const eliminatedThisTurn = [];
 
+      let dpEventsForPass = [];
       if (this.state.currentTurn === 'A') {
         this.state.currentTurn = 'B';
       } else {
@@ -185,6 +285,15 @@ export class GameServer {
           this.state.currentTurn = 'A';
           this.state.round++;
           this.addLog(`--- Round ${this.state.round} Starts ---`, 'system');
+
+          this.checkTargetCompletion('A', { roundEnded: true, wasBumped: this.state.players.A.bumpedThisRound, dpEvents: dpEventsForPass });
+          this.checkTargetCompletion('B', { roundEnded: true, wasBumped: this.state.players.B.bumpedThisRound, dpEvents: dpEventsForPass });
+          
+          this.state.players.A.bumpedThisRound = false;
+          this.state.players.B.bumpedThisRound = false;
+
+          this.generateTarget('A');
+          this.generateTarget('B');
         }
       }
 
@@ -196,7 +305,7 @@ export class GameServer {
           type: 'pass_phase',
           collapsedTiles: collapsedTilesThisTurn,
           eliminated: eliminatedThisTurn,
-          dpEvents: [] // placeholder for Phaser floating text
+          dpEvents: dpEventsForPass
         }
       };
     }
@@ -296,6 +405,7 @@ export class GameServer {
       // Stats
       player.bumpsLanded++;
       opponent.bumpsReceived++;
+      opponent.bumpedThisRound = true;
 
       // DP: bump landed
       this.addDP(playerId, 10, 'Bump landed!');
@@ -342,6 +452,14 @@ export class GameServer {
       }
     }
 
+    // Target check for move/bump
+    this.checkTargetCompletion(playerId, {
+      bumpedOpponent: bumpOccurred,
+      isOverdrive: this.state.activeRoll.isOverdrive,
+      opponentNewRing: bumpOccurred && !bumpedIntoAbyss ? getRingNumber(opponent.position) : null,
+      dpEvents
+    });
+
     // ── 3. Clear active roll ────────────────────────────────────────────────
     this.state.activeRoll = null;
 
@@ -368,6 +486,15 @@ export class GameServer {
           this.state.currentTurn = 'A';
           this.state.round++;
           this.addLog(`--- Round ${this.state.round} Starts ---`, 'system');
+
+          this.checkTargetCompletion('A', { roundEnded: true, wasBumped: this.state.players.A.bumpedThisRound, dpEvents });
+          this.checkTargetCompletion('B', { roundEnded: true, wasBumped: this.state.players.B.bumpedThisRound, dpEvents });
+          
+          this.state.players.A.bumpedThisRound = false;
+          this.state.players.B.bumpedThisRound = false;
+
+          this.generateTarget('A');
+          this.generateTarget('B');
         }
       }
     }
