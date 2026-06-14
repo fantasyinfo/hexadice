@@ -168,7 +168,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   // Styles tiles depending on state
-  styleTile(graphics, tileId, isDestroyed) {
+  styleTile(graphics, tileId, isDestroyed, isWarned = false) {
     graphics.clear();
     const points = [];
     for (let i = 0; i < 6; i++) {
@@ -182,6 +182,8 @@ export class GameScene extends Phaser.Scene {
     if (isDestroyed) {
       // Dark red styling with faint grid lines
       graphics.fillStyle(0x3a0d15, 0.85); // Dark deep red
+    } else if (isWarned) {
+      graphics.fillStyle(0x733a17, 0.95); // Deep amber/orange
     } else {
       // Ring-based colors for gradient space visual depth (distinct lighter colors)
       const ring = getRingNumber(tileId);
@@ -282,12 +284,39 @@ export class GameScene extends Phaser.Scene {
     // Redraw all tiles based on destroyed status
     this.tiles.forEach(tile => {
       const isDestroyed = !!serverState.destroyedTiles[tile.id];
+      const isWarned = serverState.warnedTiles && serverState.warnedTiles.includes(tile.id);
       const tObj = this.tileObjects[tile.id];
+      
       if (tObj) {
-        this.styleTile(tObj.hex, tile.id, isDestroyed);
+        this.styleTile(tObj.hex, tile.id, isDestroyed, isWarned);
+        
+        // Remove old warning icon/tween if exists
+        if (tObj.warnIcon) {
+          if (tObj.warnTween) tObj.warnTween.stop();
+          tObj.warnIcon.destroy();
+          tObj.warnIcon = null;
+          tObj.warnTween = null;
+        }
+
         if (isDestroyed) {
           tObj.border.lineStyle(2, 0x5a0f1b, 0.8);
           tObj.label.setColor('#5a2d34');
+        } else if (isWarned) {
+          tObj.border.lineStyle(3, 0xff6600, 1.0); // Orange border
+          tObj.label.setColor('#ff9900');
+
+          // Add warning icon
+          tObj.warnIcon = this.add.text(0, -14, '⚠️', { fontSize: '13px' }).setOrigin(0.5);
+          tObj.container.add(tObj.warnIcon);
+          
+          tObj.warnTween = this.tweens.add({
+            targets: tObj.warnIcon,
+            alpha: 0.3,
+            scale: 0.8,
+            duration: 600,
+            yoyo: true,
+            repeat: -1
+          });
         } else {
           tObj.border.lineStyle(2, 0x3f516d, 0.95);
           tObj.label.setColor(tile.id === 61 ? '#ffcc00' : '#a0aec0');

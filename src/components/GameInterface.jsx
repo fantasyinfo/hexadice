@@ -577,6 +577,15 @@ export default function GameInterface() {
         {renderPlayerCard('B')}
       </div>
 
+      {/* Warned Tiles Banner */}
+      {gameState.warnedTiles && gameState.warnedTiles.length > 0 && (
+        <div className="w-full max-w-7xl mb-4 bg-amber-950/40 border border-amber-500/50 rounded-xl p-3 flex items-center justify-center shadow-[0_0_15px_rgba(245,158,11,0.15)] animate-pulse">
+          <span className="text-amber-400 font-bold tracking-widest text-sm uppercase">
+            ⚠️ WARNING: {gameState.warnedTiles.length} {gameState.warnedTiles.length === 1 ? 'tile' : 'tiles'} will collapse next round — {gameState.warnedTiles.map(t => `Tile ${t}`).join(', ')}
+          </span>
+        </div>
+      )}
+
       {/* Combat Log */}
       <div className="expandable-logs-bar w-full max-w-7xl border border-slate-800/80 bg-slate-900/50 backdrop-blur-md rounded-xl overflow-hidden shadow-xl mb-6">
         <button onClick={() => setLogsExpanded(!logsExpanded)} className="w-full px-5 py-3 flex justify-between items-center text-slate-400 hover:text-slate-200 transition font-semibold text-xs tracking-wider">

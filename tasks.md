@@ -101,9 +101,9 @@
 
 ### 2.1 — GameServer.js: Target Data Structure
 
-- [ ] Add `huntTarget: null` to each player in state
+- [x] Add `huntTarget: null` to each player in state
   - Shape: `{ type, label, param, achieved, dpReward }`
-- [ ] Add `generateTarget(playerId)` method
+- [x] Add `generateTarget(playerId)` method
   - Receives playerId and current state
   - Returns a contextually valid target (no impossible targets):
     - If player on Ring 4 → can target Ring 3 or Ring 2
@@ -119,48 +119,48 @@
 
 ### 2.2 — GameServer.js: Generate Targets at Round Start
 
-- [ ] At start of each round (when `round` increments), call `generateTarget` for both players
-- [ ] Also generate on game start (Round 1)
-- [ ] Reset `huntTarget.achieved = false` for each new round
+- [x] At start of each round (when `round` increments), call `generateTarget` for both players
+- [x] Also generate on game start (Round 1)
+- [x] Reset `huntTarget.achieved = false` for each new round
 
 ### 2.3 — GameServer.js: Check Target Completion
 
-- [ ] Add `checkTargetCompletion(playerId)` — call after every move and bump
-- [ ] Check each target type:
+- [x] Add `checkTargetCompletion(playerId)` — call after every move and bump
+- [x] Check each target type:
   - `reach_ring` → player's current ring === param
   - `land_tile` → player's position === param
   - `land_bump` → bump occurred this turn (attacker only)
   - `land_overdrive` → bump occurred with Overdrive roll
   - `survive_no_bump` → player was not bumped this round (check at round end)
   - `force_outer` → opponent's ring after bump === 4
-- [ ] If achieved: mark `huntTarget.achieved = true`, call `addDP(playerId, dpReward, 'Hunt Target!')`
-- [ ] Log to combat log: `"Player A completed Hunt Target: Reach Ring 2! (+15 DP)"`
+- [x] If achieved: mark `huntTarget.achieved = true`, call `addDP(playerId, dpReward, 'Hunt Target!')`
+- [x] Log to combat log: `"Player A completed Hunt Target: Reach Ring 2! (+15 DP)"`
 
 ### 2.4 — GameInterface.jsx: Display Target in HUD
 
-- [ ] Show Hunt Target card in player's HUD panel (below position/status)
+- [x] Show Hunt Target card in player's HUD panel (below position/status)
   - Label: `🎯 THIS ROUND: Land a Bump`
-  - Status: `[ ]` pending, `[✓]` achieved (green), `[✗]` failed (shown at round end)
+  - Status: `[x]` pending, `[✓]` achieved (green), `[✗]` failed (shown at round end)
   - DP reward shown: `+20 DP`
-- [ ] Pulse the target card when it is achieved (brief glow animation)
-- [ ] Do NOT show opponent's target — only your own target on your side
+- [x] Pulse the target card when it is achieved (brief glow animation)
+- [x] Do NOT show opponent's target — only your own target on your side
 
 ### 2.5 — GameScene.js: Target Achievement Animation
 
-- [ ] When target is achieved, show a floating badge on the board:
+- [x] When target is achieved, show a floating badge on the board:
   - Text: `🎯 TARGET HIT! +15 DP`
   - Cyan/gold color, larger than regular DP text
   - Stays visible for 1.5s before fading
 
 ### 2.6 — Testing Checklist (Phase 2)
 
-- [ ] Targets generate each round for both players
-- [ ] No impossible targets generated (e.g., Reach Ring 2 when tiles are all destroyed)
-- [ ] Targets reset correctly each round
-- [ ] All 6 target types check and complete correctly
-- [ ] DP awarded on achievement (not double-awarded)
-- [ ] Target hidden from opponent's panel
-- [ ] Target achievement animation fires correctly
+- [x] Targets generate each round for both players
+- [x] No impossible targets generated (e.g., Reach Ring 2 when tiles are all destroyed)
+- [x] Targets reset correctly each round
+- [x] All 6 target types check and complete correctly
+- [x] DP awarded on achievement (not double-awarded)
+- [x] Target hidden from opponent's panel
+- [x] Target achievement animation fires correctly
 
 ---
 

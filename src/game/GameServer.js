@@ -45,6 +45,7 @@ export class GameServer {
         }
       },
       destroyedTiles: {},   // tileId -> true
+      warnedTiles: [],      // tileIds that will collapse next round
       activeRing: 4,
       currentTurn: 'A',
       round: 1,
@@ -540,6 +541,27 @@ export class GameServer {
     const collapsedTiles = [];
     const eliminated = [];
 
+    // --- Phase B: Destroy previously warned tiles ---
+    if (this.state.warnedTiles.length > 0) {
+      this.state.warnedTiles.forEach(tileId => {
+        this.state.destroyedTiles[tileId] = true;
+        collapsedTiles.push(tileId);
+        const ring = getRingNumber(tileId);
+        this.addLog(`Tile ${tileId} (Ring ${ring}) collapsed and is destroyed forever!`, 'collapse');
+
+        Object.keys(this.state.players).forEach(pId => {
+          const p = this.state.players[pId];
+          if (p.isAlive && p.position === tileId) {
+            p.isAlive = false;
+            eliminated.push(pId);
+            this.addLog(`Player ${pId} was standing on collapsing Tile ${tileId} and fell into the Abyss!`, 'elimination');
+          }
+        });
+      });
+      this.state.warnedTiles = [];
+    }
+
+    // --- Phase A: Warn new tiles ---
     const activeTiles = [];
     for (let i = 1; i <= 61; i++) {
       if (!this.state.destroyedTiles[i] && i !== 61) { // Center tile 61 never collapses
@@ -558,31 +580,13 @@ export class GameServer {
     }
 
     if (activeTiles.length > 0) {
-      this.addLog('Collapse Phase: Collapsing active tiles...', 'collapse');
-
       const collapseCount = Math.min(2, activeTiles.length);
-      const selectedTiles = [];
       const tempList = [...activeTiles];
       for (let i = 0; i < collapseCount; i++) {
         const idx = Math.floor(Math.random() * tempList.length);
-        selectedTiles.push(tempList.splice(idx, 1)[0]);
+        this.state.warnedTiles.push(tempList.splice(idx, 1)[0]);
       }
-
-      selectedTiles.forEach(tileId => {
-        this.state.destroyedTiles[tileId] = true;
-        collapsedTiles.push(tileId);
-        const ring = getRingNumber(tileId);
-        this.addLog(`Tile ${tileId} (Ring ${ring}) collapsed and is destroyed forever!`, 'collapse');
-
-        Object.keys(this.state.players).forEach(pId => {
-          const p = this.state.players[pId];
-          if (p.isAlive && p.position === tileId) {
-            p.isAlive = false;
-            eliminated.push(pId);
-            this.addLog(`Player ${pId} was standing on collapsing Tile ${tileId} and fell into the Abyss!`, 'elimination');
-          }
-        });
-      });
+      this.addLog(`⚠️ WARNING: Tiles ${this.state.warnedTiles.join(' and ')} are unstable and will collapse next round!`, 'warning');
     }
 
     return { collapsedTiles, eliminated };
