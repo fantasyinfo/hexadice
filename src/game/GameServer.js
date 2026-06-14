@@ -140,7 +140,15 @@ export class GameServer {
     let achieved = false;
 
     if (target.type === 'reach_ring') {
-      if (getRingNumber(player.position) === target.param) achieved = true;
+      const oldR = actionContext ? actionContext.oldRing : undefined;
+      const newR = actionContext ? actionContext.newRing : undefined;
+      if (oldR !== undefined && newR !== undefined) {
+        if ((oldR >= target.param && newR <= target.param) || (oldR <= target.param && newR >= target.param)) {
+          achieved = true;
+        }
+      } else {
+        if (getRingNumber(player.position) === target.param) achieved = true;
+      }
     } else if (target.type === 'land_tile') {
       if (player.position === target.param) achieved = true;
     } else if (target.type === 'land_bump') {
@@ -156,7 +164,12 @@ export class GameServer {
     if (achieved) {
       target.achieved = true;
       player.huntTargetsHit++;
-      this.addDP(playerId, target.dpReward, 'Hunt Target!');
+
+      const prevPos = actionContext && actionContext.startPosition !== undefined ? actionContext.startPosition : player.position;
+      const curPos = player.position;
+      const reason = `Hunt Target Completed: ${target.label} (Moved Tile ${prevPos} -> ${curPos})`;
+
+      this.addDP(playerId, target.dpReward, reason);
       if (actionContext && actionContext.dpEvents) {
         actionContext.dpEvents.push({ playerId, amount: target.dpReward, label: `🎯 TARGET HIT! +${target.dpReward} DP`, isTarget: true });
       }
@@ -182,7 +195,7 @@ export class GameServer {
 
     const sign = actual > 0 ? '+' : '';
     const logType = actual > 0 ? 'dp_gain' : 'dp_loss';
-    this.addLog(`[DP] Player ${playerId}: ${sign}${actual} — ${reason} (${player.dp} total)`, logType);
+    this.addLog(`[DP] Player ${playerId}: ${sign}${actual} — ${reason} (DP: ${before} → ${player.dp})`, logType);
   }
 
   /**
@@ -340,6 +353,8 @@ export class GameServer {
     }
 
     const player = this.state.players[playerId];
+    const startPosition = player.position;
+
     const opponentId = playerId === 'A' ? 'B' : 'A';
     const opponent = this.state.players[opponentId];
 
@@ -361,6 +376,7 @@ export class GameServer {
 
     // DP: ring progress
     const dpBefore = player.dp;
+    const oldRing = player.previousRing;
     this.checkRingProgress(playerId);
     const dpAfter = player.dp;
     if (dpAfter > dpBefore) {
@@ -457,7 +473,10 @@ export class GameServer {
       bumpedOpponent: bumpOccurred,
       isOverdrive: this.state.activeRoll.isOverdrive,
       opponentNewRing: bumpOccurred && !bumpedIntoAbyss ? getRingNumber(opponent.position) : null,
-      dpEvents
+      dpEvents,
+      oldRing,
+      newRing: getRingNumber(player.position),
+      startPosition
     });
 
     // ── 3. Clear active roll ────────────────────────────────────────────────
@@ -522,8 +541,20 @@ export class GameServer {
     const eliminated = [];
 
     const activeTiles = [];
-    for (let id = 1; id <= 61; id++) {
-      if (!this.state.destroyedTiles[id]) activeTiles.push(id);
+    for (let i = 1; i <= 61; i++) {
+      if (!this.state.destroyedTiles[i] && i !== 61) { // Center tile 61 never collapses
+        // Prevent active Hunt Target tiles from collapsing to avoid unfair deaths
+        let isTargetTile = false;
+        Object.values(this.state.players).forEach(p => {
+          if (p.isAlive && p.huntTarget && p.huntTarget.type === 'land_tile' && p.huntTarget.param === i) {
+            isTargetTile = true;
+          }
+        });
+
+        if (!isTargetTile) {
+          activeTiles.push(i);
+        }
+      }
     }
 
     if (activeTiles.length > 0) {

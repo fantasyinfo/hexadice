@@ -132,6 +132,34 @@ export class GameScene extends Phaser.Scene {
       container.add(hex);
       container.add(border);
       container.add(label);
+
+      // Add Ring Labels on the top-most tile of each ring
+      if ([1, 25, 43, 55, 61].includes(tile.id)) {
+        let ringText = '';
+        if (tile.id === 1) ringText = 'RING 4';
+        if (tile.id === 25) ringText = 'RING 3';
+        if (tile.id === 43) ringText = 'RING 2';
+        if (tile.id === 55) ringText = 'RING 1';
+        if (tile.id === 61) ringText = 'CENTER';
+
+        const ringLabel = this.add.text(0, -28, ringText, {
+          fontFamily: '"Courier New", Courier, monospace',
+          fontSize: '9px',
+          fontWeight: 'bold',
+          color: '#00ffcc',
+          backgroundColor: '#0a0d14dd',
+          padding: { x: 4, y: 2 }
+        }).setOrigin(0.5);
+        
+        // Draw a tiny pointer down
+        const pointer = this.add.graphics();
+        pointer.fillStyle(0x00ffcc, 1);
+        pointer.fillTriangle(-3, -19, 3, -19, 0, -15);
+        
+        container.add(ringLabel);
+        container.add(pointer);
+      }
+
       this.boardContainer.add(container);
 
       // Save references

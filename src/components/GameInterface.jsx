@@ -649,6 +649,17 @@ export default function GameInterface() {
                   <li>Every round: 2 random tiles collapse forever. Standing on one = eliminated.</li>
                 </ul>
               </div>
+              <div className="flex flex-col gap-2">
+                <span className="font-bold text-indigo-400">🎯 Hunt Targets (Secret Missions):</span>
+                <p className="text-xs text-slate-400 mb-1">New secret targets are given at the start of each round. Complete them for bonus DP!</p>
+                <ul className="list-disc pl-5 flex flex-col gap-1 text-slate-400 text-xs">
+                  <li><strong className="text-slate-300">Reach Ring X:</strong> Move to or past the specified inner ring during your turn.</li>
+                  <li><strong className="text-slate-300">Land on Tile X:</strong> Finish your move exactly on the specified tile number.</li>
+                  <li><strong className="text-slate-300">Land an Overdrive bump:</strong> Roll an 8 (Overdrive) and bump your opponent on that exact turn.</li>
+                  <li><strong className="text-slate-300">Push opponent to Ring 4:</strong> Bump your opponent so they slide back into the outermost ring (Ring 4).</li>
+                  <li><strong className="text-slate-300">Survive without being bumped:</strong> Finish your move, then survive your opponent's move without getting bumped. This target is evaluated at the end of the round!</li>
+                </ul>
+              </div>
             </div>
             <div className="mt-6 border-t border-slate-800 pt-4 flex justify-end">
               <button onClick={() => setShowRulesModal(false)} className="px-6 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-lg font-bold transition text-xs tracking-widest uppercase">
