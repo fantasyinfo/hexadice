@@ -294,9 +294,22 @@ function SetupModal({ initialConfig, onStart }) {
 export default function GameInterface() {
   const phaserContainerRef = useRef(null);
   const phaserGameRef = useRef(null);
-  const serverRef = useRef(new GameServer());
-
+  const serverRef = useRef(null);
+  if (!serverRef.current) {
+    serverRef.current = new GameServer();
+    try {
+      const savedRules = localStorage.getItem('hexaplay_rules');
+      if (savedRules) serverRef.current.setRules(JSON.parse(savedRules));
+    } catch (e) {}
+  }
   const [gameState, setGameState] = useState(serverRef.current.getState());
+
+  const toggleRule = (ruleKey) => {
+    const newRules = { ...gameState.rules, [ruleKey]: !gameState.rules[ruleKey] };
+    serverRef.current.setRules(newRules);
+    localStorage.setItem('hexaplay_rules', JSON.stringify(newRules));
+    setGameState(serverRef.current.getState());
+  };
   const [isAnimating, setIsAnimating] = useState(false);
   const [isWaitingForTileSelection, setIsWaitingForTileSelection] = useState(false);
   const [showSetup, setShowSetup] = useState(true);
@@ -315,6 +328,7 @@ export default function GameInterface() {
   });
   const [isMuted, setIsMuted] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [logsExpanded, setLogsExpanded] = useState(false);
   const [lastPassInfo, setLastPassInfo] = useState(null);
@@ -469,7 +483,9 @@ export default function GameInterface() {
 
   const handleRestart = () => {
     sounds.init();
+    const currentRules = serverRef.current.rules;
     serverRef.current = new GameServer();
+    serverRef.current.setRules(currentRules);
     serverRef.current.setConfig(playersConfig);
     const newState = serverRef.current.getState();
     setGameState(newState);
@@ -560,7 +576,7 @@ export default function GameInterface() {
 
           <DPBar dp={player.dp} color={color} flashing={dpFlash[pid]} />
 
-          {player.huntTarget && (
+          {gameState?.rules?.enableHuntTargets && player.huntTarget && (
             <div className={`mt-2 flex flex-col gap-1.5 p-3 rounded-lg border ${!isMyTurn
                 ? 'bg-slate-900/60 border-slate-800'
                 : player.huntTarget.achieved
@@ -677,6 +693,7 @@ export default function GameInterface() {
           )}
         </div>
         <div className="flex gap-3">
+          <button onClick={() => setShowSettingsModal(true)} className="px-4 py-1.5 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">⚙️ Settings</button>
           <button onClick={() => setShowRulesModal(true)} className="px-4 py-1.5 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">📋 Rules</button>
           <button onClick={toggleMute} className="px-4 py-1.5 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">{isMuted ? '🔇 Muted' : '🔊 Sound On'}</button>
           <button onClick={handleRestart} className="px-4 py-1.5 text-xs font-bold rounded-lg bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-900/80 transition">🔄 Restart</button>
@@ -759,6 +776,55 @@ export default function GameInterface() {
       </div>
 
       {/* Rules Modal */}
+      {showSettingsModal && (
+        <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={(e) => { if(e.target === e.currentTarget) setShowSettingsModal(false); }}>
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
+              <h2 className="text-lg font-black tracking-widest text-slate-200">⚙️ GAME SETTINGS</h2>
+              <button onClick={() => setShowSettingsModal(false)} className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition font-bold">✕</button>
+            </div>
+            <div className="p-6 overflow-y-auto custom-scrollbar flex flex-col gap-6 text-slate-300 text-sm leading-relaxed font-medium">
+               <div className="flex justify-between items-center">
+                 <div>
+                   <h3 className="text-white font-bold tracking-wide">🎯 Hunt Targets</h3>
+                   <p className="text-xs text-slate-500 mt-1">Enable secret missions for bonus DP.</p>
+                 </div>
+                 <button onClick={() => toggleRule('enableHuntTargets')} className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${gameState.rules?.enableHuntTargets ? 'bg-cyan-500' : 'bg-slate-700'}`}>
+                   <div className={`w-4 h-4 bg-white rounded-full transition-transform ${gameState.rules?.enableHuntTargets ? 'translate-x-6' : 'translate-x-0'}`} />
+                 </button>
+               </div>
+               <div className="flex justify-between items-center">
+                 <div>
+                   <h3 className="text-white font-bold tracking-wide">💥 Pawn Bumping</h3>
+                   <p className="text-xs text-slate-500 mt-1">Allow sending opponent pawns back home.</p>
+                 </div>
+                 <button onClick={() => toggleRule('enableBumping')} className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${gameState.rules?.enableBumping ? 'bg-cyan-500' : 'bg-slate-700'}`}>
+                   <div className={`w-4 h-4 bg-white rounded-full transition-transform ${gameState.rules?.enableBumping ? 'translate-x-6' : 'translate-x-0'}`} />
+                 </button>
+               </div>
+               <div className="flex justify-between items-center">
+                 <div>
+                   <h3 className="text-white font-bold tracking-wide">💣 Board Collapse</h3>
+                   <p className="text-xs text-slate-500 mt-1">Tiles randomly collapse over time.</p>
+                 </div>
+                 <button onClick={() => toggleRule('enableBoardCollapse')} className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${gameState.rules?.enableBoardCollapse ? 'bg-cyan-500' : 'bg-slate-700'}`}>
+                   <div className={`w-4 h-4 bg-white rounded-full transition-transform ${gameState.rules?.enableBoardCollapse ? 'translate-x-6' : 'translate-x-0'}`} />
+                 </button>
+               </div>
+               <div className="flex justify-between items-center">
+                 <div>
+                   <h3 className="text-white font-bold tracking-wide">🔥 Combos</h3>
+                   <p className="text-xs text-slate-500 mt-1">Bonus DP for streaking actions.</p>
+                 </div>
+                 <button onClick={() => toggleRule('enableCombos')} className={`w-12 h-6 rounded-full transition-colors flex items-center px-1 ${gameState.rules?.enableCombos ? 'bg-cyan-500' : 'bg-slate-700'}`}>
+                   <div className={`w-4 h-4 bg-white rounded-full transition-transform ${gameState.rules?.enableCombos ? 'translate-x-6' : 'translate-x-0'}`} />
+                 </button>
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showRulesModal && (
         <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={() => setShowRulesModal(false)}>
           <div className="modal-card bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative overflow-y-auto" style={{ maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>

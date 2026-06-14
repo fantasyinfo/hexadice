@@ -413,10 +413,14 @@ export class GameScene extends Phaser.Scene {
         this.input.setDefaultCursor('pointer');
 
         // Draw guide path to show counting mechanics
-        const activePlayer = this.state.currentTurn;
-        const currentPos = this.state.players[activePlayer].position;
-        const path = findGridPath(currentPos, tileId, this.state.destroyedTiles);
-        this.drawGuidePath(path);
+        if (type === 'target') {
+          const activePlayer = this.state.currentTurn;
+          const pawn = this.state.players[activePlayer]?.pawns.find(p => p.id === this.selectedPawnId);
+          if (pawn && pawn.position) {
+            const path = findGridPath(pawn.position, tileId, this.state.destroyedTiles);
+            this.drawGuidePath(path);
+          }
+        }
       });
 
       tObj.container.on('pointerout', () => {

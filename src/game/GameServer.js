@@ -2,7 +2,17 @@ import { getRingTiles, getRingNumber, getBfsDistance } from './BoardGeometry';
 
 export class GameServer {
   constructor() {
+    this.rules = {
+      enableHuntTargets: true,
+      enableBumping: true,
+      enableBoardCollapse: true,
+      enableCombos: true
+    };
     this.reset();
+  }
+
+  setRules(newRules) {
+    this.rules = { ...this.rules, ...newRules };
   }
 
   reset() {
@@ -58,6 +68,7 @@ export class GameServer {
   }
 
   updateCombo(playerId, action) {
+    if (!this.rules.enableCombos) return null;
     const player = this.state.players[playerId];
     if (!player || !player.isAlive) return null;
 
@@ -95,6 +106,7 @@ export class GameServer {
   }
 
   generateTarget(playerId) {
+    if (!this.rules.enableHuntTargets) return;
     const player = this.state.players[playerId];
     if (!player || !player.isAlive) return;
 
@@ -136,6 +148,7 @@ export class GameServer {
   }
 
   checkTargetCompletion(playerId, actionContext) {
+    if (!this.rules.enableHuntTargets) return;
     const player = this.state.players[playerId];
     if (!player || !player.isAlive || !player.huntTarget || player.huntTarget.achieved) return;
 
@@ -190,7 +203,9 @@ export class GameServer {
   }
 
   getState() {
-    return JSON.parse(JSON.stringify(this.state));
+    const stateCopy = JSON.parse(JSON.stringify(this.state));
+    stateCopy.rules = this.rules;
+    return stateCopy;
   }
 
   rollDice(playerId, forcedRoll = null) {
@@ -219,6 +234,15 @@ export class GameServer {
         if (targetId === currentPos || this.state.destroyedTiles[targetId]) continue;
         const targetRing = getRingNumber(targetId);
         if (Math.abs(targetRing - currentRing) > 1) continue;
+        
+        // Prevent backward movement
+        if (targetRing > currentRing) continue; // Cannot move outward
+        if (targetRing === currentRing) {
+           const size = currentRing === 4 ? 24 : currentRing === 3 ? 18 : currentRing === 2 ? 12 : currentRing === 1 ? 6 : 1;
+           const forwardDist = (targetId - currentPos + size) % size;
+           const backwardDist = (currentPos - targetId + size) % size;
+           if (backwardDist < forwardDist) continue;
+        }
 
         const dist = getBfsDistance(currentPos, targetId, this.state.destroyedTiles);
         if (dist === movement) targets.push(targetId);
@@ -310,7 +334,7 @@ export class GameServer {
         if (op.isAlive && !op.isHome && op.position === targetTileId) bumpedPawn = op;
       });
 
-      if (bumpedPawn) {
+      if (bumpedPawn && this.rules.enableBumping) {
         bumpOccurred = true;
         bumpedPawnId = bumpedPawn.id;
         
@@ -355,15 +379,19 @@ export class GameServer {
     this.checkWinConditions();
 
     if (!this.state.isGameOver) {
-      if (this.state.currentTurn === 'A') {
-        this.state.currentTurn = 'B';
+      if (bumpOccurred) {
+        this.addLog(`Player ${playerId} gets an EXTRA TURN for landing a bump!`, 'system');
       } else {
-        const collapseReport = this.triggerCollapse();
-        collapsedTilesThisTurn = collapseReport.collapsedTiles;
-        collapseReport.eliminated.forEach(pId => eliminatedThisTurn.push(pId));
-        this._awardCollapseDP(collapseReport.eliminated);
-        this.checkWinConditions();
-        if (!this.state.isGameOver) this._advanceRound();
+        if (this.state.currentTurn === 'A') {
+          this.state.currentTurn = 'B';
+        } else {
+          const collapseReport = this.triggerCollapse();
+          collapsedTilesThisTurn = collapseReport.collapsedTiles;
+          collapseReport.eliminated.forEach(pId => eliminatedThisTurn.push(pId));
+          this._awardCollapseDP(collapseReport.eliminated);
+          this.checkWinConditions();
+          if (!this.state.isGameOver) this._advanceRound();
+        }
       }
     }
 
@@ -395,6 +423,7 @@ export class GameServer {
   }
 
   triggerCollapse() {
+    if (!this.rules.enableBoardCollapse) return { collapsedTiles: [], eliminated: [] };
     const collapsedTiles = [];
     const eliminated = [];
 
