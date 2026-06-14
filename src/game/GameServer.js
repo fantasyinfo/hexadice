@@ -16,8 +16,8 @@ export class GameServer {
   }
 
   reset() {
-    const startA = [1, 1, 1, 1];
-    const startB = [13, 13, 13, 13];
+    const startA = [101, 101, 101, 101];
+    const startB = [102, 102, 102, 102];
 
     const createPawns = (playerId, starts) => starts.map((pos, i) => ({
       id: `${playerId}${i + 1}`,
@@ -324,7 +324,7 @@ export class GameServer {
 
     if (targetTileId === 61) {
       pawn.isHome = true;
-      pawn.position = null;
+      pawn.position = 61;
       this.addLog(`Pawn ${pawnId} reached the Core and Ascended!`, 'win');
       this.addDP(playerId, 25, 'Pawn ascended to The Core!');
       dpEvents.push({ playerId, amount: 25, label: `+25 DP ASCEND!` });
@@ -488,8 +488,8 @@ export class GameServer {
     const bHome = pB.pawns.filter(p => p.isHome).length;
     const bDead = pB.pawns.filter(p => !p.isAlive).length;
 
-    const aWinsAscension = aHome > 0 && (aHome + aDead === 4);
-    const bWinsAscension = bHome > 0 && (bHome + bDead === 4);
+    const aWinsAscension = aHome === 4;
+    const bWinsAscension = bHome === 4;
 
     if (aWinsAscension && bWinsAscension) return this._setDraw('ascension');
     if (aWinsAscension) return this._setWinner('A', 'ascension');

@@ -126,11 +126,13 @@ export class GameScene extends Phaser.Scene {
       border.strokePath();
 
       // Draw number label inside
-      const labelColor = tile.id === 61 ? '#ffcc00' : '#a0aec0';
+      const isBase = tile.isBase;
+      const labelText = isBase ? '🏠' : tile.id.toString();
+      const labelColor = tile.id === 61 || isBase ? '#ffcc00' : '#a0aec0';
       const labelWeight = tile.id === 61 ? 'bold' : 'normal';
-      const labelSize = tile.id === 61 ? '15px' : '12px';
+      const labelSize = tile.id === 61 || isBase ? '15px' : '12px';
       
-      const label = this.add.text(0, 0, tile.id.toString(), {
+      const label = this.add.text(0, 0, labelText, {
         fontFamily: '"Courier New", Courier, monospace',
         fontSize: labelSize,
         fontWeight: labelWeight,
@@ -197,6 +199,10 @@ export class GameScene extends Phaser.Scene {
       const ring = getRingNumber(tileId);
       if (tileId === 61) {
         graphics.fillStyle(0x614f27, 0.95); // Bronze/Gold center tile
+      } else if (tileId === 101) {
+        graphics.fillStyle(0x006699, 0.95); // Player A Base Dark Blue
+      } else if (tileId === 102) {
+        graphics.fillStyle(0x994c00, 0.95); // Player B Base Dark Orange
       } else {
         const colors = [
           0x2a364d, // Ring 4
@@ -269,9 +275,9 @@ export class GameScene extends Phaser.Scene {
   getPlayerOffsets(tileId) {
     const pawnsOnTile = [];
     if (this.state && this.state.players) {
-      ['A', 'B'].forEach(pId => {
+      Object.keys(this.state.players).forEach(pId => {
         this.state.players[pId].pawns.forEach(pawn => {
-          if (pawn.position === tileId && pawn.isAlive && !pawn.isHome) {
+          if (pawn.isAlive && pawn.position === tileId) {
             pawnsOnTile.push(pawn.id);
           }
         });
@@ -799,13 +805,8 @@ export class GameScene extends Phaser.Scene {
       const startPos = pawnBefore ? pawnBefore.position : null;
       const endPos = report.targetTileId;
 
-      if (!startPos || startPos === endPos || report.ascended) {
-        // If ascended, just fade out
-        if (report.ascended) {
-          this.tweens.add({ targets: token, alpha: 0, scale: 0, duration: 500, onComplete: resolve });
-        } else {
-          resolve();
-        }
+      if (!startPos || startPos === endPos) {
+        resolve();
         return;
       }
 
@@ -827,7 +828,30 @@ export class GameScene extends Phaser.Scene {
           duration: 220,
           ease: 'Quad.easeInOut',
           delay: 30,
-          onComplete: () => { if (isLastStep) resolve(); }
+          onComplete: () => { 
+            if (isLastStep) {
+              if (report.ascended) {
+                const popupText = this.add.text(token.x, token.y - 40, '🏠 HOME!', {
+                  fontFamily: 'Impact, Arial, sans-serif',
+                  fontSize: '24px',
+                  color: '#ffd700',
+                  stroke: '#000000',
+                  strokeThickness: 4
+                }).setOrigin(0.5);
+                this.boardContainer.add(popupText);
+                
+                this.tweens.add({
+                  targets: popupText,
+                  y: popupText.y - 30,
+                  alpha: 0,
+                  duration: 2000,
+                  ease: 'Power2',
+                  onComplete: () => popupText.destroy()
+                });
+              }
+              resolve(); 
+            }
+          }
         });
       });
     });

@@ -79,11 +79,39 @@ export function getSpiralCoordinates(hexSize = 35) {
     ring: 0
   });
 
+  // Player Bases (Ring 5, completely outside the main board)
+  // Spawn A (101) sits outside Tile 1 (q=0, r=-4). So Spawn A is at q=0, r=-5.
+  const spawnAScreen = hexToScreen(0, -5, hexSize);
+  tiles.push({
+    id: 101,
+    q: 0,
+    r: -5,
+    x: spawnAScreen.x,
+    y: spawnAScreen.y,
+    ring: 5,
+    isBase: true,
+    owner: 'A'
+  });
+
+  // Spawn B (102) sits outside Tile 13 (q=0, r=4). So Spawn B is at q=0, r=5.
+  const spawnBScreen = hexToScreen(0, 5, hexSize);
+  tiles.push({
+    id: 102,
+    q: 0,
+    r: 5,
+    x: spawnBScreen.x,
+    y: spawnBScreen.y,
+    ring: 5,
+    isBase: true,
+    owner: 'B'
+  });
+
   return tiles;
 }
 
 // Helper to determine the ring number for a given tile ID
 export function getRingNumber(tileId) {
+  if (tileId === 101 || tileId === 102) return 5;
   if (tileId >= 1 && tileId <= 24) return 4;
   if (tileId >= 25 && tileId <= 42) return 3;
   if (tileId >= 43 && tileId <= 54) return 2;
@@ -95,6 +123,8 @@ export function getRingNumber(tileId) {
 // Helper to get all tile IDs belonging to a specific ring
 export function getRingTiles(ringNumber) {
   switch (ringNumber) {
+    case 5:
+      return [101, 102];
     case 4:
       return Array.from({ length: 24 }, (_, i) => i + 1);
     case 3:
