@@ -21,13 +21,17 @@ export class GameScene extends Phaser.Scene {
     const { width, height } = this.scale;
     
     // Set a subtle space dark background
-    this.add.rectangle(0, 0, width, height, 0x05070c).setOrigin(0);
+    this.bgRect = this.add.rectangle(0, 0, width, height, 0x05070c).setOrigin(0);
 
     // Create space dust / stars background decoration
     this.createStars(width, height);
 
     // Create a container centered on screen for the hex grid
-    this.boardContainer = this.add.container(width / 2, height / 2 - 20);
+    this.boardContainer = this.add.container(width / 2, height / 2);
+    
+    // Setup dynamic resizing
+    this.scale.on('resize', this.handleResize, this);
+    this.handleResize({ width, height });
 
     // Generate coordinate data
     this.tiles = getSpiralCoordinates(this.hexSize);
@@ -56,6 +60,28 @@ export class GameScene extends Phaser.Scene {
 
     // Notify React that Phaser is ready
     this.game.events.emit('PHASER_READY');
+  }
+
+  handleResize(gameSize) {
+    const { width, height } = gameSize;
+    if (this.bgRect) {
+      this.bgRect.setSize(width, height);
+    }
+    if (this.boardContainer) {
+      this.boardContainer.setPosition(width / 2, height / 2);
+    }
+    
+    // Dynamic zoom: we know the board needs about 12 hex widths and 15 hex heights
+    const boardWidth = 14 * this.hexSize;
+    const boardHeight = 16 * this.hexSize;
+    
+    // Calculate scale ratio (add some padding)
+    const padding = 40;
+    const scaleX = (width - padding) / boardWidth;
+    const scaleY = (height - padding) / boardHeight;
+    
+    const targetZoom = Math.min(scaleX, scaleY, 1.8); // max zoom 1.8
+    this.cameras.main.setZoom(targetZoom);
   }
 
   // Draw space stars decoration
@@ -359,7 +385,7 @@ export class GameScene extends Phaser.Scene {
           token.setVisible(false);
        } else {
           token.setVisible(true);
-          const tile = this.tiles[pawn.position - 1];
+          const tile = this.tiles.find(t => t.id === pawn.position);
           if (tile) {
             const offsets = this.getPlayerOffsets(pawn.position);
             token.setPosition(tile.x + (offsets[pawnId]?.x || 0), tile.y + (offsets[pawnId]?.y || 0));
@@ -508,7 +534,7 @@ export class GameScene extends Phaser.Scene {
     // Draw the connections
     this.guideGraphics.beginPath();
     path.forEach((tileId, index) => {
-      const tile = this.tiles[tileId - 1];
+      const tile = this.tiles.find(t => t.id === tileId);
       if (index === 0) {
         this.guideGraphics.moveTo(tile.x, tile.y);
       } else {
@@ -520,14 +546,14 @@ export class GameScene extends Phaser.Scene {
     // Draw step circles and directional arrows to show counting mechanics
     path.forEach((tileId, index) => {
       if (index === 0) return; // Skip starting position
-      const tile = this.tiles[tileId - 1];
+      const tile = this.tiles.find(t => t.id === tileId);
 
       // Draw path node indicator
       this.guideGraphics.fillStyle(0x00ffcc, 0.9);
       this.guideGraphics.fillCircle(tile.x, tile.y, 8);
 
       // Draw directional arrow on the segment
-      const prevTile = this.tiles[path[index - 1] - 1];
+      const prevTile = this.tiles.find(t => t.id === path[index - 1]);
       const angle = Phaser.Math.Angle.Between(prevTile.x, prevTile.y, tile.x, tile.y);
       
       const midX = (prevTile.x + tile.x) / 2;
@@ -816,7 +842,7 @@ export class GameScene extends Phaser.Scene {
 
       path.forEach((tileId, index) => {
         if (index === 0) return;
-        const tile = this.tiles[tileId - 1];
+        const tile = this.tiles.find(t => t.id === tileId);
         const isLastStep = index === path.length - 1;
         const offsets = isLastStep ? this.getPlayerOffsets(tile.id) : {};
         const offset = offsets[pawnId] || { x:0, y:0 };
@@ -894,7 +920,7 @@ export class GameScene extends Phaser.Scene {
         onComplete: () => hitText.destroy()
       });
 
-      const spawnTile = this.tiles[spawnPos - 1];
+      const spawnTile = this.tiles.find(t => t.id === spawnPos);
       const offsets = this.getPlayerOffsets(spawnPos);
       const offset = offsets[opponentPawnId] || {x:0, y:0};
 
@@ -966,7 +992,8 @@ export class GameScene extends Phaser.Scene {
             // Check if players are standing on this tile and play elimination
             report.eliminated.forEach(pId => {
               const token = this.playerTokens[pId];
-              const dist = Phaser.Math.Distance.Between(token.x, token.y, this.tiles[tileId-1].x, this.tiles[tileId-1].y);
+              const targetTile = this.tiles.find(t => t.id === tileId);
+              const dist = Phaser.Math.Distance.Between(token.x, token.y, targetTile.x, targetTile.y);
               if (dist < 10) {
                 this.playEliminationEffect(token, "COLLAPSED!");
               }

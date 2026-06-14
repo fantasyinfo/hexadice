@@ -330,6 +330,7 @@ export default function GameInterface() {
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
+  const [showUIOverlay, setShowUIOverlay] = useState(false);
   const [logsExpanded, setLogsExpanded] = useState(false);
   const [lastPassInfo, setLastPassInfo] = useState(null);
   const [dpFlash, setDpFlash] = useState({ A: false, B: false });
@@ -533,13 +534,13 @@ export default function GameInterface() {
     const rollLabel = isA ? 'text-blue-400' : 'text-orange-400';
 
     return (
-      <div className={`player-card-panel w-full lg:w-72 bg-slate-900/40 border rounded-xl p-5 flex flex-col justify-between shadow-xl transition-all duration-300 ${isMyTurn ? borderActive : 'border-slate-800/80'}`}>
-        <div className="flex flex-col gap-3">
-          <div className="flex justify-between items-center pb-3 border-b border-slate-800/60 relative">
-            <span className={`text-xl font-black tracking-widest uppercase ${isMyTurn ? titleActive : 'text-slate-400'}`} style={{ color: isMyTurn ? hexColor : undefined }}>
+      <div className={`player-card-panel w-full lg:w-56 bg-slate-900/40 border rounded-xl p-4 flex flex-col justify-between shadow-xl transition-all duration-300 ${isMyTurn ? borderActive : 'border-slate-800/80'}`}>
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-between items-center pb-2 border-b border-slate-800/60 relative">
+            <span className={`text-lg font-black tracking-widest uppercase ${isMyTurn ? titleActive : 'text-slate-400'}`} style={{ color: isMyTurn ? hexColor : undefined }}>
               {player.name}
             </span>
-            <span className={`w-3.5 h-3.5 rounded-full ${player.isAlive ? liveDot : 'bg-red-950 border border-red-800'}`} style={{ backgroundColor: player.isAlive ? hexColor : undefined, boxShadow: player.isAlive ? `0 0 8px ${hexColor}` : undefined }} />
+            <span className={`w-3 h-3 rounded-full ${player.isAlive ? liveDot : 'bg-red-950 border border-red-800'}`} style={{ backgroundColor: player.isAlive ? hexColor : undefined, boxShadow: player.isAlive ? `0 0 8px ${hexColor}` : undefined }} />
           </div>
 
           {/* Combo Badge */}
@@ -549,18 +550,18 @@ export default function GameInterface() {
             </div>
           )}
 
-          <div className="flex flex-col gap-2 font-mono">
-            <div className="flex justify-between text-xs">
+          <div className="flex flex-col gap-1.5 font-mono">
+            <div className="flex justify-between text-[10px]">
               <span className="text-slate-500">PAWNS HOME</span>
               <span className={`${posColor} font-bold`}>{player.pawns.filter(p => p.isHome).length}/4 👑</span>
             </div>
-            <div className="flex justify-between text-xs">
+            <div className="flex justify-between text-[10px]">
               <span className="text-slate-500">PAWNS ALIVE</span>
               <span className={player.isAlive ? 'text-green-400 font-bold' : 'text-red-500 font-bold animate-pulse'}>
                 {player.pawns.filter(p => p.isAlive && !p.isHome).length} / 4
               </span>
             </div>
-            <div className="flex justify-between text-xs">
+            <div className="flex justify-between text-[10px]">
               <span className="text-slate-500">BUMPS</span>
               <span className="text-slate-300 font-bold">{player.bumpsLanded} 💥</span>
             </div>
@@ -630,13 +631,13 @@ export default function GameInterface() {
           )}
         </div>
 
-        <div className="mt-5">
+        <div className="mt-4">
           {isMyTurn ? (
             <button
               disabled={isAnimating || isWaitingForTileSelection}
               onClick={handleRoll}
               id={`roll-btn-${pid}`}
-              className={`w-full py-4 text-sm font-bold tracking-widest rounded-lg border uppercase transition shadow-lg ${isWaitingForTileSelection
+              className={`w-full py-3 text-xs font-bold tracking-widest rounded-lg border uppercase transition shadow-lg ${isWaitingForTileSelection
                   ? 'border-cyan-800 text-cyan-400 cursor-not-allowed animate-pulse bg-slate-950/30'
                   : isAnimating
                     ? 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed'
@@ -648,7 +649,7 @@ export default function GameInterface() {
               {isWaitingForTileSelection ? 'Select Hex...' : isAnimating ? 'Rolling...' : 'ROLL D6'}
             </button>
           ) : (
-            <div className="w-full py-4 text-center text-xs font-mono text-slate-600 border border-slate-900 rounded-lg select-none">
+            <div className="w-full py-3 text-center text-[10px] font-mono text-slate-600 border border-slate-900 rounded-lg select-none">
               Waiting for Turn
             </div>
           )}
@@ -659,6 +660,15 @@ export default function GameInterface() {
 
   return (
     <div className="game-screen-wrapper w-full flex flex-col items-center relative">
+
+      {!showSetup && (
+        <button 
+          onClick={() => setShowUIOverlay(!showUIOverlay)}
+          className="fixed top-4 right-4 z-50 px-5 py-2.5 bg-slate-900/90 border border-slate-700 text-slate-300 rounded-full text-xs font-bold shadow-[0_0_20px_rgba(0,0,0,0.8)] hover:bg-slate-800 hover:text-white backdrop-blur-md transition-all flex items-center gap-2"
+        >
+          {showUIOverlay ? '▼ HIDE UI' : '⚙️ MENU & LOGS'}
+        </button>
+      )}
 
       {dpToast && (
         <div className="absolute top-20 z-50 animate-bounce pointer-events-none">
@@ -672,52 +682,54 @@ export default function GameInterface() {
       {showSummary && <MatchSummary gameState={gameState} onPlayAgain={handleRestart} />}
 
       {/* Header */}
-      <header className="w-full max-w-7xl px-6 py-4 flex justify-between items-center bg-slate-900/60 border border-slate-800/80 rounded-xl mb-4 backdrop-blur-md">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl font-black tracking-widest bg-gradient-to-r from-blue-400 to-orange-400 bg-clip-text text-transparent">HEXADROP</span>
-          <span className="px-2.5 py-0.5 text-[10px] font-mono rounded bg-slate-800 border border-slate-700 text-slate-400 tracking-wider">v0.2</span>
-        </div>
-        <div className="text-center">
-          {gameState.isGameOver ? (
-            <button onClick={() => setShowSummary(true)} className="text-sm font-black text-amber-400 tracking-widest animate-pulse hover:text-amber-300 transition">
-              MATCH OVER — View Summary ▶
-            </button>
-          ) : isWaitingForTileSelection ? (
-            <div className="px-6 py-2 rounded-full border border-cyan-500/50 bg-cyan-950/40 text-cyan-300 font-mono text-xs font-bold tracking-wide shadow-[0_0_15px_rgba(6,182,212,0.2)] animate-pulse">
-              👉 {playersConfig[gameState.currentTurn]?.name || `Player ${gameState.currentTurn}`} rolled {gameState.activeRoll?.roll}! Click highlighted tile to move
-            </div>
-          ) : (
-            <span className="text-xs font-mono text-slate-500 tracking-wider">
-              🎮 Round {gameState.round} · {61 - Object.keys(gameState.destroyedTiles).length}/61 tiles · First to 100 DP wins
-            </span>
-          )}
-        </div>
-        <div className="flex gap-3">
-          <button onClick={() => setShowSettingsModal(true)} className="px-4 py-1.5 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">⚙️ Settings</button>
-          <button onClick={() => setShowRulesModal(true)} className="px-4 py-1.5 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">📋 Rules</button>
-          <button onClick={toggleMute} className="px-4 py-1.5 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">{isMuted ? '🔇 Muted' : '🔊 Sound On'}</button>
-          <button onClick={handleRestart} className="px-4 py-1.5 text-xs font-bold rounded-lg bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-900/80 transition">🔄 Restart</button>
-        </div>
-      </header>
+      {showUIOverlay && (
+        <header className="w-full max-w-[1800px] px-6 py-4 flex justify-between items-center bg-slate-900/60 border border-slate-800/80 rounded-xl mb-4 backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl font-black tracking-widest bg-gradient-to-r from-blue-400 to-orange-400 bg-clip-text text-transparent">HEXADROP</span>
+            <span className="px-2.5 py-0.5 text-[10px] font-mono rounded bg-slate-800 border border-slate-700 text-slate-400 tracking-wider">v0.2</span>
+          </div>
+          <div className="text-center">
+            {gameState.isGameOver ? (
+              <button onClick={() => setShowSummary(true)} className="text-sm font-black text-amber-400 tracking-widest animate-pulse hover:text-amber-300 transition">
+                MATCH OVER — View Summary ▶
+              </button>
+            ) : isWaitingForTileSelection ? (
+              <div className="px-6 py-2 rounded-full border border-cyan-500/50 bg-cyan-950/40 text-cyan-300 font-mono text-xs font-bold tracking-wide shadow-[0_0_15px_rgba(6,182,212,0.2)] animate-pulse">
+                👉 {playersConfig[gameState.currentTurn]?.name || `Player ${gameState.currentTurn}`} rolled {gameState.activeRoll?.roll}! Click highlighted tile to move
+              </div>
+            ) : (
+              <span className="text-xs font-mono text-slate-500 tracking-wider">
+                🎮 Round {gameState.round} · {61 - Object.keys(gameState.destroyedTiles).length}/61 tiles · First to 100 DP wins
+              </span>
+            )}
+          </div>
+          <div className="flex gap-3">
+            <button onClick={() => setShowSettingsModal(true)} className="px-4 py-1.5 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">⚙️ Settings</button>
+            <button onClick={() => setShowRulesModal(true)} className="px-4 py-1.5 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">📋 Rules</button>
+            <button onClick={toggleMute} className="px-4 py-1.5 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">{isMuted ? '🔇 Muted' : '🔊 Sound On'}</button>
+            <button onClick={handleRestart} className="px-4 py-1.5 text-xs font-bold rounded-lg bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-900/80 transition">🔄 Restart</button>
+          </div>
+        </header>
+      )}
 
       {/* MAIN CONTAINER */}
-      <div className="flex flex-col lg:flex-row gap-6 w-full max-w-7xl px-4 items-stretch mx-auto relative">
-
-        {/* Head-to-Head Banner (Absolute Top Center) */}
-        {!showSetup && (headToHead.A > 0 || headToHead.B > 0) && (
-          <div className="absolute -top-12 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-slate-900/80 border border-slate-700 shadow-xl backdrop-blur-md flex items-center gap-3">
-            <span className="text-xs font-bold text-blue-400">{playersConfig.A.name} {headToHead.A}</span>
-            <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">— VS —</span>
-            <span className="text-xs font-bold text-orange-400">{headToHead.B} {playersConfig.B.name}</span>
-          </div>
-        )}
+      <div className="flex flex-col lg:flex-row gap-4 w-full max-w-[1800px] px-2 lg:px-6 items-stretch mx-auto relative pt-2">
 
         {renderPlayerCard('A')}
         <div className="phaser-canvas-panel flex-1 flex justify-center">
           <div
             className="w-full relative rounded-2xl overflow-hidden shadow-2xl border border-slate-800 bg-[#05070c]"
-            style={{ minHeight: '560px' }}
+            style={{ minHeight: '75vh' }}
           >
+            {/* Head-to-Head Banner (Absolute Top Center inside board) */}
+            {!showSetup && (headToHead.A > 0 || headToHead.B > 0) && (
+              <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-slate-900/80 border border-slate-700 shadow-xl backdrop-blur-md flex items-center gap-3 z-20">
+                <span className="text-xs font-bold text-blue-400">{playersConfig.A.name} {headToHead.A}</span>
+                <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">— VS —</span>
+                <span className="text-xs font-bold text-orange-400">{headToHead.B} {playersConfig.B.name}</span>
+              </div>
+            )}
+            
             {showSetup && <SetupModal initialConfig={playersConfig} onStart={handleSetupComplete} />}
             <div ref={phaserContainerRef} className="w-full h-full flex items-center justify-center" />
             
@@ -744,36 +756,38 @@ export default function GameInterface() {
       )}
 
       {/* Combat Log */}
-      <div className="expandable-logs-bar w-full max-w-7xl border border-slate-800/80 bg-slate-900/50 backdrop-blur-md rounded-xl overflow-hidden shadow-xl mb-6">
-        <button onClick={() => setLogsExpanded(!logsExpanded)} className="w-full px-5 py-3 flex justify-between items-center text-slate-400 hover:text-slate-200 transition font-semibold text-xs tracking-wider">
-          <span>📋 COMBAT FEED LOGS ({gameState.combatLog.length} events)</span>
-          <span>{logsExpanded ? '▼ Collapse logs' : '▲ Expand logs'}</span>
-        </button>
-        {logsExpanded && (
-          <div className="logs-panel border-t border-slate-800/60 p-5 bg-slate-950/60 max-h-48 overflow-y-auto pr-1">
-            <div className="flex flex-col gap-1.5 font-mono text-[11px] leading-relaxed">
-              {gameState.combatLog.map(log => {
-                let cls = 'text-slate-400';
-                if (log.type === 'roll') cls = 'text-cyan-400';
-                else if (log.type === 'bump') cls = 'text-rose-400 font-bold';
-                else if (log.type === 'collapse') cls = 'text-amber-500';
-                else if (log.type === 'elimination') cls = 'text-red-500 font-semibold';
-                else if (log.type === 'win') cls = 'text-green-400 font-bold border-t border-b border-green-950/50 py-1 my-1';
-                else if (log.type === 'warning') cls = 'text-amber-400 italic';
-                else if (log.type === 'dp_gain') cls = 'text-emerald-400';
-                else if (log.type === 'dp_loss') cls = 'text-rose-300 italic';
-                return (
-                  <div key={log.id} className={`${cls} flex gap-2 items-start`}>
-                    <span className="text-slate-600 shrink-0 font-bold select-none">[R{log.round}]</span>
-                    <span>{log.text}</span>
-                  </div>
-                );
-              })}
-              <div ref={logEndRef} />
+      {showUIOverlay && (
+        <div className="expandable-logs-bar w-full max-w-[1800px] border border-slate-800/80 bg-slate-900/50 backdrop-blur-md rounded-xl overflow-hidden shadow-xl mb-6 mt-4">
+          <button onClick={() => setLogsExpanded(!logsExpanded)} className="w-full px-5 py-3 flex justify-between items-center text-slate-400 hover:text-slate-200 transition font-semibold text-xs tracking-wider">
+            <span>📋 COMBAT FEED LOGS ({gameState.combatLog.length} events)</span>
+            <span>{logsExpanded ? '▼ Collapse logs' : '▲ Expand logs'}</span>
+          </button>
+          {logsExpanded && (
+            <div className="logs-panel border-t border-slate-800/60 p-5 bg-slate-950/60 max-h-48 overflow-y-auto pr-1">
+              <div className="flex flex-col gap-1.5 font-mono text-[11px] leading-relaxed">
+                {gameState.combatLog.map(log => {
+                  let cls = 'text-slate-400';
+                  if (log.type === 'roll') cls = 'text-cyan-400';
+                  else if (log.type === 'bump') cls = 'text-rose-400 font-bold';
+                  else if (log.type === 'collapse') cls = 'text-amber-500';
+                  else if (log.type === 'elimination') cls = 'text-red-500 font-semibold';
+                  else if (log.type === 'win') cls = 'text-green-400 font-bold border-t border-b border-green-950/50 py-1 my-1';
+                  else if (log.type === 'warning') cls = 'text-amber-400 italic';
+                  else if (log.type === 'dp_gain') cls = 'text-emerald-400';
+                  else if (log.type === 'dp_loss') cls = 'text-rose-300 italic';
+                  return (
+                    <div key={log.id} className={`${cls} flex gap-2 items-start`}>
+                      <span className="text-slate-600 shrink-0 font-bold select-none">[R{log.round}]</span>
+                      <span>{log.text}</span>
+                    </div>
+                  );
+                })}
+                <div ref={logEndRef} />
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Rules Modal */}
       {showSettingsModal && (

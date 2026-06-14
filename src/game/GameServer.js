@@ -360,7 +360,7 @@ export class GameServer {
         if (this.state.destroyedTiles[spawnPos]) {
           bumpedPawn.isAlive = false;
           bumpedIntoAbyss = true;
-          eliminatedThisTurn.push(opponentId);
+          eliminatedThisTurn.push(bumpedPawn.id);
           this.addLog(`Pawn ${bumpedPawnId} was sent back to spawn Tile ${spawnPos}, but it was destroyed! Pawn eliminated!`, 'elimination');
           this.addDP(playerId, 25, 'Opponent pawn eliminated by bump into abyss!');
           dpEvents.push({ playerId, amount: 25, label: '+25 DP KILL!' });
@@ -437,7 +437,7 @@ export class GameServer {
           this.state.players[pId].pawns.forEach(pawn => {
             if (pawn.isAlive && !pawn.isHome && pawn.position === tileId) {
               pawn.isAlive = false;
-              eliminated.push(pId);
+              eliminated.push(pawn.id);
               this.addLog(`Pawn ${pawn.id} was standing on collapsing Tile ${tileId} and fell into the Abyss!`, 'elimination');
             }
           });
