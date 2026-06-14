@@ -32,6 +32,7 @@ export class GameServer {
           huntTarget: null,
           huntTargetsHit: 0,
           bumpedThisRound: false,
+          combo: { name: null, count: 0, actionHistory: [] }
         },
         B: {
           id: 'B', name: 'Player B', position: startB, isAlive: true,
@@ -42,6 +43,7 @@ export class GameServer {
           huntTarget: null,
           huntTargetsHit: 0,
           bumpedThisRound: false,
+          combo: { name: null, count: 0, actionHistory: [] }
         }
       },
       destroyedTiles: {},   // tileId -> true
@@ -59,6 +61,61 @@ export class GameServer {
     this.addLog(`Game started! Player A on Tile ${startA}, Player B on Tile ${startB}. First to 100 DP or last alive wins!`, 'system');
     this.generateTarget('A');
     this.generateTarget('B');
+  }
+
+  // ─── Configuration ──────────────────────────────────────────────────────────
+
+  setConfig(playersConfig) {
+    if (playersConfig.A && playersConfig.A.name) {
+      this.state.players.A.name = playersConfig.A.name;
+    }
+    if (playersConfig.B && playersConfig.B.name) {
+      this.state.players.B.name = playersConfig.B.name;
+    }
+  }
+
+  // ─── Combo System ───────────────────────────────────────────────────────────
+
+  updateCombo(playerId, action) {
+    const player = this.state.players[playerId];
+    if (!player || !player.isAlive) return null;
+
+    if (action === 'break') {
+      player.combo.actionHistory = [];
+      player.combo.name = null;
+      player.combo.count = 0;
+      return null;
+    }
+
+    player.combo.actionHistory.push(action);
+    if (player.combo.actionHistory.length > 5) {
+      player.combo.actionHistory.shift();
+    }
+
+    const hist = player.combo.actionHistory;
+    let comboAwarded = null;
+
+    if (hist.length >= 2 && hist.slice(-2).every(a => a === 'bump' || a === 'overdrive')) {
+      comboAwarded = { name: 'RAMPAGE', dp: 15 };
+    } else if (hist.length >= 3 && hist.slice(-3).every(a => a === 'move_inward')) {
+      comboAwarded = { name: 'ASCEND', dp: 10 };
+    } else if (hist.filter(a => a === 'overdrive').length >= 2) {
+      comboAwarded = { name: 'BERSERK', dp: 20 };
+    } else if (hist.length >= 3 && hist.slice(-3).every(a => a === 'survived_no_bump')) {
+      comboAwarded = { name: 'IRONWALL', dp: 10 };
+    } else if (hist.length >= 3 && hist.slice(-3).every(a => a === 'hunt_target')) {
+      comboAwarded = { name: 'PRECISION', dp: 25 };
+    }
+
+    if (comboAwarded) {
+      player.combo.name = comboAwarded.name;
+      player.combo.count++;
+      this.addDP(playerId, comboAwarded.dp, `${comboAwarded.name} Combo!`);
+      player.combo.actionHistory = []; // Reset after award
+      return comboAwarded;
+    }
+
+    return null;
   }
 
   // ─── Logging ────────────────────────────────────────────────────────────────
@@ -174,6 +231,12 @@ export class GameServer {
       if (actionContext && actionContext.dpEvents) {
         actionContext.dpEvents.push({ playerId, amount: target.dpReward, label: `🎯 TARGET HIT! +${target.dpReward} DP`, isTarget: true });
       }
+
+      const comboAction = target.type === 'survive_no_bump' ? 'survived_no_bump' : 'hunt_target';
+      const combo = this.updateCombo(playerId, comboAction);
+      if (combo && actionContext && actionContext.triggeredCombos) {
+        actionContext.triggeredCombos.push({ playerId, ...combo });
+      }
     }
   }
 
@@ -215,6 +278,9 @@ export class GameServer {
         // Award ring-entry bonus (first time entering this inner ring)
         this.addDP(playerId, 5, `Entered Ring ${newRing}!`);
       }
+      
+      const combo = this.updateCombo(playerId, 'move_inward');
+      if (combo) player.latestCombo = combo;
     }
 
     player.previousRing = newRing;
@@ -282,7 +348,9 @@ export class GameServer {
 
       // DP penalty for forced pass
       this.addDP(playerId, -2, 'Turn auto-passed');
+      this.updateCombo(playerId, 'break');
 
+      this.state.activeRoll = null;
       let collapsedTilesThisTurn = [];
       const eliminatedThisTurn = [];
 
@@ -364,6 +432,7 @@ export class GameServer {
 
     // Track DP events for Phaser floating text animation
     const dpEvents = [];
+    const triggeredCombos = [];
 
     let bumpOccurred = false;
     let bumpDistance = 0;
@@ -428,6 +497,12 @@ export class GameServer {
       this.addDP(playerId, 10, 'Bump landed!');
       dpEvents.push({ playerId, amount: 10, label: '+10 DP BUMP!' });
 
+      const comboAction = this.state.activeRoll.isOverdrive ? 'overdrive' : 'bump';
+      const combo = this.updateCombo(playerId, comboAction);
+      if (combo) triggeredCombos.push({ playerId, ...combo });
+
+      this.updateCombo(opponentId, 'break'); // Opponent combo breaks when bumped
+
       // DP: opponent receives bump penalty
       this.addDP(opponentId, -3, 'Received a bump');
       dpEvents.push({ playerId: opponentId, amount: -3, label: '-3 DP' });
@@ -475,10 +550,17 @@ export class GameServer {
       isOverdrive: this.state.activeRoll.isOverdrive,
       opponentNewRing: bumpOccurred && !bumpedIntoAbyss ? getRingNumber(opponent.position) : null,
       dpEvents,
+      triggeredCombos,
       oldRing,
       newRing: getRingNumber(player.position),
       startPosition
     });
+
+    // Grab any combo triggered by checkRingProgress
+    if (player.latestCombo) {
+      triggeredCombos.push({ playerId, ...player.latestCombo });
+      player.latestCombo = null;
+    }
 
     // ── 3. Clear active roll ────────────────────────────────────────────────
     this.state.activeRoll = null;
@@ -507,8 +589,8 @@ export class GameServer {
           this.state.round++;
           this.addLog(`--- Round ${this.state.round} Starts ---`, 'system');
 
-          this.checkTargetCompletion('A', { roundEnded: true, wasBumped: this.state.players.A.bumpedThisRound, dpEvents });
-          this.checkTargetCompletion('B', { roundEnded: true, wasBumped: this.state.players.B.bumpedThisRound, dpEvents });
+          this.checkTargetCompletion('A', { roundEnded: true, wasBumped: this.state.players.A.bumpedThisRound, dpEvents, triggeredCombos });
+          this.checkTargetCompletion('B', { roundEnded: true, wasBumped: this.state.players.B.bumpedThisRound, dpEvents, triggeredCombos });
           
           this.state.players.A.bumpedThisRound = false;
           this.state.players.B.bumpedThisRound = false;
@@ -530,6 +612,7 @@ export class GameServer {
         eliminated: eliminatedThisTurn,
         collapsedTiles: collapsedTilesThisTurn,
         dpEvents,
+        combos: triggeredCombos,
         type: 'move_phase'
       }
     };

@@ -7,6 +7,16 @@ import { GameScene } from '../game/GameScene';
 import { GameServer } from '../game/GameServer';
 import sounds from '../game/soundEffects';
 
+
+const PRESET_COLORS = [
+  { hex: 0x00bfff, bg: 'bg-[#00bfff]', name: 'Cyan' },
+  { hex: 0xff8c00, bg: 'bg-[#ff8c00]', name: 'Orange' },
+  { hex: 0x22c55e, bg: 'bg-[#22c55e]', name: 'Green' },
+  { hex: 0xa855f7, bg: 'bg-[#a855f7]', name: 'Purple' },
+  { hex: 0xef4444, bg: 'bg-[#ef4444]', name: 'Red' },
+  { hex: 0x0ea5e9, bg: 'bg-[#0ea5e9]', name: 'Blue' }
+];
+
 // ── DP Progress Bar ──────────────────────────────────────────────────────────
 function DPBar({ dp, color, flashing }) {
   const pct = Math.min(100, dp);
@@ -49,16 +59,16 @@ function MatchSummary({ gameState, onPlayAgain }) {
   const isDraw = winner === 'Draw';
 
   const cfgMap = {
-    A:    { title: 'PLAYER A WINS', bar: 'from-blue-500 to-cyan-400',    accent: '#3b82f6', glow: 'rgba(59,130,246,0.2)',  labelColor: '#60a5fa' },
-    B:    { title: 'PLAYER B WINS', bar: 'from-orange-500 to-amber-400', accent: '#f97316', glow: 'rgba(249,115,22,0.2)', labelColor: '#fb923c' },
-    Draw: { title: 'DRAW',          bar: 'from-slate-500 to-slate-400',  accent: '#64748b', glow: 'rgba(100,116,139,0.1)', labelColor: '#94a3b8' },
+    A: { title: 'PLAYER A WINS', bar: 'from-blue-500 to-cyan-400', accent: '#3b82f6', glow: 'rgba(59,130,246,0.2)', labelColor: '#60a5fa' },
+    B: { title: 'PLAYER B WINS', bar: 'from-orange-500 to-amber-400', accent: '#f97316', glow: 'rgba(249,115,22,0.2)', labelColor: '#fb923c' },
+    Draw: { title: 'DRAW', bar: 'from-slate-500 to-slate-400', accent: '#64748b', glow: 'rgba(100,116,139,0.1)', labelColor: '#94a3b8' },
   };
   const c = cfgMap[winner] || cfgMap.Draw;
 
-  const badge    = isDomination ? '🏆 Domination Win' : isDraw ? '🤝 Draw' : '💀 Survival Win';
+  const badge = isDomination ? '🏆 Domination Win' : isDraw ? '🤝 Draw' : '💀 Survival Win';
   const subtitle = isDomination ? 'First to 100 Domination Points'
-                 : isDraw       ? 'Both players fell into the Abyss'
-                                : 'Last player standing';
+    : isDraw ? 'Both players fell into the Abyss'
+      : 'Last player standing';
 
   const handleCopy = () => {
     const lines = [
@@ -69,17 +79,17 @@ function MatchSummary({ gameState, onPlayAgain }) {
       `Player B: ${players.B.dp} DP · ${players.B.bumpsLanded} bumps landed`,
       `Match: ${round} rounds`,
     ].join('\n');
-    navigator.clipboard.writeText(lines).catch(() => {});
+    navigator.clipboard.writeText(lines).catch(() => { });
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const statRows = [
-    { label: 'Domination Points', keyA: players.A.dp,           keyB: players.B.dp,           fmtA: `${players.A.dp} DP`,       fmtB: `${players.B.dp} DP`,       numeric: true },
-    { label: 'Bumps Landed',      keyA: players.A.bumpsLanded,  keyB: players.B.bumpsLanded,  fmtA: players.A.bumpsLanded,       fmtB: players.B.bumpsLanded,       numeric: true },
-    { label: 'Bumps Received',    keyA: players.A.bumpsReceived, keyB: players.B.bumpsReceived, fmtA: players.A.bumpsReceived,    fmtB: players.B.bumpsReceived,     numeric: true },
-    { label: 'Hunt Targets',      keyA: players.A.huntTargetsHit, keyB: players.B.huntTargetsHit, fmtA: players.A.huntTargetsHit,    fmtB: players.B.huntTargetsHit,    numeric: true },
-    { label: 'Result',            keyA: players.A.isAlive,      keyB: players.B.isAlive,      fmtA: players.A.isAlive ? '✅ Survived' : '💀 Fallen', fmtB: players.B.isAlive ? '✅ Survived' : '💀 Fallen', numeric: false },
+    { label: 'Domination Points', keyA: players.A.dp, keyB: players.B.dp, fmtA: `${players.A.dp} DP`, fmtB: `${players.B.dp} DP`, numeric: true },
+    { label: 'Bumps Landed', keyA: players.A.bumpsLanded, keyB: players.B.bumpsLanded, fmtA: players.A.bumpsLanded, fmtB: players.B.bumpsLanded, numeric: true },
+    { label: 'Bumps Received', keyA: players.A.bumpsReceived, keyB: players.B.bumpsReceived, fmtA: players.A.bumpsReceived, fmtB: players.B.bumpsReceived, numeric: true },
+    { label: 'Hunt Targets', keyA: players.A.huntTargetsHit, keyB: players.B.huntTargetsHit, fmtA: players.A.huntTargetsHit, fmtB: players.B.huntTargetsHit, numeric: true },
+    { label: 'Result', keyA: players.A.isAlive, keyB: players.B.isAlive, fmtA: players.A.isAlive ? '✅ Survived' : '💀 Fallen', fmtB: players.B.isAlive ? '✅ Survived' : '💀 Fallen', numeric: false },
   ];
 
   return (
@@ -228,6 +238,58 @@ function MatchSummary({ gameState, onPlayAgain }) {
   );
 }
 
+// ── Setup Modal ───────────────────────────────────────────────────────────────
+function SetupModal({ initialConfig, onStart }) {
+  const [nameA, setNameA] = useState(initialConfig.A.name);
+  const [colorA, setColorA] = useState(initialConfig.A.color);
+  const [nameB, setNameB] = useState(initialConfig.B.name);
+  const [colorB, setColorB] = useState(initialConfig.B.color);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onStart({
+      A: { name: nameA || 'Player A', color: colorA },
+      B: { name: nameB || 'Player B', color: colorB }
+    });
+  };
+
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#05070c]/90 backdrop-blur-md">
+      <form onSubmit={handleSubmit} className="bg-slate-900 border border-slate-700 p-8 rounded-2xl shadow-2xl max-w-md w-full">
+        <h2 className="text-2xl font-black text-center mb-6 tracking-widest text-white">GAME SETUP</h2>
+
+        <div className="space-y-6">
+          {/* Player A Setup */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Player A</label>
+            <input type="text" value={nameA} onChange={e => setNameA(e.target.value)} maxLength={15} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-white focus:border-cyan-500 focus:outline-none" placeholder="Enter Name" />
+            <div className="flex gap-2 mt-2">
+              {PRESET_COLORS.map(c => (
+                <button key={c.hex} type="button" onClick={() => setColorA(c.hex)} className={`w-8 h-8 rounded-full ${c.bg} ${colorA === c.hex ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-900' : 'opacity-50 hover:opacity-100'}`} title={c.name} />
+              ))}
+            </div>
+          </div>
+
+          {/* Player B Setup */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Player B</label>
+            <input type="text" value={nameB} onChange={e => setNameB(e.target.value)} maxLength={15} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-white focus:border-orange-500 focus:outline-none" placeholder="Enter Name" />
+            <div className="flex gap-2 mt-2">
+              {PRESET_COLORS.map(c => (
+                <button key={c.hex} type="button" onClick={() => setColorB(c.hex)} className={`w-8 h-8 rounded-full ${c.bg} ${colorB === c.hex ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-900' : 'opacity-50 hover:opacity-100'}`} title={c.name} />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <button type="submit" className="w-full mt-8 py-4 bg-gradient-to-r from-blue-600 to-cyan-500 rounded-xl font-black tracking-widest uppercase text-white shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:shadow-[0_0_30px_rgba(6,182,212,0.6)] transition-all">
+          Start Game
+        </button>
+      </form>
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function GameInterface() {
   const phaserContainerRef = useRef(null);
@@ -237,6 +299,20 @@ export default function GameInterface() {
   const [gameState, setGameState] = useState(serverRef.current.getState());
   const [isAnimating, setIsAnimating] = useState(false);
   const [isWaitingForTileSelection, setIsWaitingForTileSelection] = useState(false);
+  const [showSetup, setShowSetup] = useState(true);
+  const [playersConfig, setPlayersConfig] = useState(() => {
+    try {
+      const stored = localStorage.getItem('hexadrop_config');
+      if (stored) return JSON.parse(stored);
+    } catch (e) { }
+    return { A: { name: 'Player A', color: 0x00bfff }, B: { name: 'Player B', color: 0xff8c00 } };
+  });
+  const [sessionHistory, setSessionHistory] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('hexadrop_history') || '[]'); } catch (e) { return []; }
+  });
+  const [headToHead, setHeadToHead] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('hexadrop_h2h') || '{"A":0,"B":0}'); } catch (e) { return { A: 0, B: 0 }; }
+  });
   const [isMuted, setIsMuted] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
@@ -245,18 +321,23 @@ export default function GameInterface() {
   const [dpFlash, setDpFlash] = useState({ A: false, B: false });
   const [dpToast, setDpToast] = useState(null);
 
+  const logEndRef = useRef(null);
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [gameState.combatLog, logsExpanded]);
+
+  useEffect(() => {
+    serverRef.current.setConfig(playersConfig);
+    setGameState(serverRef.current.getState());
+  }, []);
+
   useEffect(() => {
     if (dpToast) {
       const t = setTimeout(() => setDpToast(null), 3000);
       return () => clearTimeout(t);
     }
   }, [dpToast]);
-
-  const logEndRef = useRef(null);
-
-  useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [gameState.combatLog, logsExpanded]);
 
   const flashDP = useCallback((playerId) => {
     setDpFlash(prev => ({ ...prev, [playerId]: true }));
@@ -280,6 +361,7 @@ export default function GameInterface() {
     phaserGameRef.current = game;
 
     game.events.on('PHASER_READY', () => {
+      game.events.emit('CONFIG_PLAYERS', { A: playersConfig.A.color, B: playersConfig.B.color });
       game.events.emit('SYNC_STATE', serverRef.current.getState());
     });
 
@@ -311,6 +393,24 @@ export default function GameInterface() {
         return newState;
       });
       if (newState.isGameOver) {
+        try {
+          const matchResult = {
+            winner: newState.winner,
+            dpA: newState.players.A.dp,
+            dpB: newState.players.B.dp
+          };
+
+          const newHistory = [...sessionHistory, matchResult].slice(-3); // Keep last 3
+          setSessionHistory(newHistory);
+          localStorage.setItem('hexadrop_history', JSON.stringify(newHistory));
+
+          if (newState.winner === 'A' || newState.winner === 'B') {
+            const newH2H = { ...headToHead, [newState.winner]: headToHead[newState.winner] + 1 };
+            setHeadToHead(newH2H);
+            localStorage.setItem('hexadrop_h2h', JSON.stringify(newH2H));
+          }
+        } catch (e) { }
+
         setTimeout(() => setShowSummary(true), 800);
       }
     });
@@ -326,7 +426,7 @@ export default function GameInterface() {
     });
 
     return () => { game.destroy(true); };
-  }, [flashDP]);
+  }, [flashDP, playersConfig]);
 
   const handleReportSounds = (report) => {
     if (report.bump) {
@@ -369,14 +469,26 @@ export default function GameInterface() {
 
   const handleRestart = () => {
     sounds.init();
-    setShowSummary(false);
-    setLastPassInfo(null);
-    serverRef.current.reset();
+    serverRef.current = new GameServer();
+    serverRef.current.setConfig(playersConfig);
     const newState = serverRef.current.getState();
     setGameState(newState);
+    setShowSummary(false);
     setIsAnimating(false);
     setIsWaitingForTileSelection(false);
+    setLastPassInfo(null);
     phaserGameRef.current?.events.emit('SYNC_STATE', newState);
+  };
+
+  const handleSetupComplete = (cfg) => {
+    setPlayersConfig(cfg);
+    localStorage.setItem('hexadrop_config', JSON.stringify(cfg));
+    serverRef.current.setConfig(cfg);
+    setGameState(serverRef.current.getState());
+    setShowSetup(false);
+    if (phaserGameRef.current) {
+      phaserGameRef.current.events.emit('CONFIG_PLAYERS', { A: cfg.A.color, B: cfg.B.color });
+    }
   };
 
   const toggleMute = () => {
@@ -392,9 +504,12 @@ export default function GameInterface() {
     const player = gameState.players[pid];
     const isMyTurn = isA ? isPlayerATurn : isPlayerBTurn;
     const color = isA ? 'blue' : 'orange';
+    const cfg = playersConfig[pid];
+    const hexColor = `#${cfg.color.toString(16).padStart(6, '0')}`;
+
     const borderActive = isA
-      ? 'border-blue-500/80 bg-blue-950/5 shadow-[0_0_20px_rgba(59,130,246,0.15)]'
-      : 'border-orange-500/80 bg-orange-950/5 shadow-[0_0_20px_rgba(249,115,22,0.15)]';
+      ? `border-blue-500/80 bg-blue-950/5 shadow-[0_0_20px_rgba(59,130,246,0.15)]`
+      : `border-orange-500/80 bg-orange-950/5 shadow-[0_0_20px_rgba(249,115,22,0.15)]`;
     const titleActive = isA ? 'text-blue-300' : 'text-orange-300';
     const posColor = isA ? 'text-blue-400' : 'text-orange-400';
     const liveDot = isA ? 'bg-blue-500 shadow-[0_0_8px_#3b82f6]' : 'bg-orange-500 shadow-[0_0_8px_#f97316]';
@@ -404,10 +519,19 @@ export default function GameInterface() {
     return (
       <div className={`player-card-panel w-full lg:w-72 bg-slate-900/40 border rounded-xl p-5 flex flex-col justify-between shadow-xl transition-all duration-300 ${isMyTurn ? borderActive : 'border-slate-800/80'}`}>
         <div className="flex flex-col gap-3">
-          <div className="flex justify-between items-center pb-3 border-b border-slate-800/60">
-            <span className={`text-xl font-black tracking-widest ${isMyTurn ? titleActive : 'text-slate-400'}`}>PLAYER {pid}</span>
-            <span className={`w-3.5 h-3.5 rounded-full ${player.isAlive ? liveDot : 'bg-red-950 border border-red-800'}`} />
+          <div className="flex justify-between items-center pb-3 border-b border-slate-800/60 relative">
+            <span className={`text-xl font-black tracking-widest uppercase ${isMyTurn ? titleActive : 'text-slate-400'}`} style={{ color: isMyTurn ? hexColor : undefined }}>
+              {player.name}
+            </span>
+            <span className={`w-3.5 h-3.5 rounded-full ${player.isAlive ? liveDot : 'bg-red-950 border border-red-800'}`} style={{ backgroundColor: player.isAlive ? hexColor : undefined, boxShadow: player.isAlive ? `0 0 8px ${hexColor}` : undefined }} />
           </div>
+
+          {/* Combo Badge */}
+          {player.combo && player.combo.name && (
+            <div className="absolute top-4 right-4 bg-slate-900 border text-white text-[10px] font-black uppercase px-2 py-1 rounded shadow-lg animate-pulse" style={{ borderColor: hexColor, color: hexColor }}>
+              🔥 {player.combo.name} {player.combo.count > 1 ? `×${player.combo.count}` : ''}
+            </div>
+          )}
 
           <div className="flex flex-col gap-2 font-mono">
             <div className="flex justify-between text-xs">
@@ -424,18 +548,25 @@ export default function GameInterface() {
               <span className="text-slate-500">BUMPS</span>
               <span className="text-slate-300 font-bold">{player.bumpsLanded} 💥</span>
             </div>
+            {sessionHistory.length > 0 && (
+              <div className="flex justify-between text-[10px] mt-1 pt-2 border-t border-slate-800/60">
+                <span className="text-slate-500">LAST {sessionHistory.length} MATCHES</span>
+                <span className="text-slate-400 font-bold">
+                  {sessionHistory.map(h => isA ? h.dpA : h.dpB).join(' · ')} DP
+                </span>
+              </div>
+            )}
           </div>
 
           <DPBar dp={player.dp} color={color} flashing={dpFlash[pid]} />
 
           {player.huntTarget && (
-            <div className={`mt-2 flex flex-col gap-1.5 p-3 rounded-lg border ${
-              !isMyTurn 
-                ? 'bg-slate-900/60 border-slate-800' 
-                : player.huntTarget.achieved 
-                  ? 'bg-emerald-950/40 border-emerald-800/60 shadow-[0_0_15px_rgba(16,185,129,0.15)]' 
+            <div className={`mt-2 flex flex-col gap-1.5 p-3 rounded-lg border ${!isMyTurn
+                ? 'bg-slate-900/60 border-slate-800'
+                : player.huntTarget.achieved
+                  ? 'bg-emerald-950/40 border-emerald-800/60 shadow-[0_0_15px_rgba(16,185,129,0.15)]'
                   : 'bg-indigo-950/30 border-indigo-900/50'
-            }`}>
+              }`}>
               <div className="flex justify-between items-center">
                 <span className={`text-[9px] font-bold tracking-widest ${!isMyTurn ? 'text-slate-500' : 'text-indigo-400'}`}>HUNT TARGET</span>
                 {isMyTurn && (
@@ -449,9 +580,8 @@ export default function GameInterface() {
                   <span className="text-xs font-mono text-slate-500 tracking-wider">[ HIDDEN ]</span>
                 ) : (
                   <>
-                    <div className={`w-3 h-3 rounded-sm border flex items-center justify-center ${
-                      player.huntTarget.achieved ? 'bg-emerald-500 border-emerald-400 text-white' : 'border-slate-600 bg-slate-900'
-                    }`}>
+                    <div className={`w-3 h-3 rounded-sm border flex items-center justify-center ${player.huntTarget.achieved ? 'bg-emerald-500 border-emerald-400 text-white' : 'border-slate-600 bg-slate-900'
+                      }`}>
                       {player.huntTarget.achieved && <span className="text-[8px] font-black">✓</span>}
                     </div>
                     <span className={`text-xs font-mono font-medium ${player.huntTarget.achieved ? 'text-emerald-300' : 'text-slate-300'}`}>
@@ -490,15 +620,14 @@ export default function GameInterface() {
               disabled={isAnimating || isWaitingForTileSelection}
               onClick={handleRoll}
               id={`roll-btn-${pid}`}
-              className={`w-full py-4 text-sm font-bold tracking-widest rounded-lg border uppercase transition shadow-lg ${
-                isWaitingForTileSelection
+              className={`w-full py-4 text-sm font-bold tracking-widest rounded-lg border uppercase transition shadow-lg ${isWaitingForTileSelection
                   ? 'border-cyan-800 text-cyan-400 cursor-not-allowed animate-pulse bg-slate-950/30'
                   : isAnimating
                     ? 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed'
                     : isA
                       ? 'bg-blue-600/10 hover:bg-blue-600/20 border-blue-500 text-blue-300 hover:shadow-[0_0_15px_rgba(59,130,246,0.35)]'
                       : 'bg-orange-600/10 hover:bg-orange-600/20 border-orange-500 text-orange-300 hover:shadow-[0_0_15px_rgba(249,115,22,0.35)]'
-              }`}
+                }`}
             >
               {isWaitingForTileSelection ? 'Select Hex...' : isAnimating ? 'Rolling...' : 'ROLL D8'}
             </button>
@@ -517,9 +646,8 @@ export default function GameInterface() {
 
       {dpToast && (
         <div className="absolute top-20 z-50 animate-bounce pointer-events-none">
-          <div className={`px-6 py-3 rounded-full border-2 bg-slate-900 shadow-2xl backdrop-blur-md ${
-            dpToast.color === 'blue' ? 'border-blue-500 text-blue-400 shadow-blue-500/50' : 'border-orange-500 text-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.5)]'
-          }`}>
+          <div className={`px-6 py-3 rounded-full border-2 bg-slate-900 shadow-2xl backdrop-blur-md ${dpToast.color === 'blue' ? 'border-blue-500 text-blue-400 shadow-blue-500/50' : 'border-orange-500 text-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.5)]'
+            }`}>
             <span className="font-black tracking-widest text-lg drop-shadow-md">🏆 {dpToast.text}</span>
           </div>
         </div>
@@ -539,9 +667,9 @@ export default function GameInterface() {
               MATCH OVER — View Summary ▶
             </button>
           ) : isWaitingForTileSelection ? (
-            <span className="text-xs font-mono text-cyan-400 tracking-wider animate-pulse">
-              👉 Player {gameState.currentTurn} rolled {gameState.activeRoll?.roll}! Click highlighted tile to move
-            </span>
+            <div className="px-6 py-2 rounded-full border border-cyan-500/50 bg-cyan-950/40 text-cyan-300 font-mono text-xs font-bold tracking-wide shadow-[0_0_15px_rgba(6,182,212,0.2)] animate-pulse">
+              👉 {playersConfig[gameState.currentTurn]?.name || `Player ${gameState.currentTurn}`} rolled {gameState.activeRoll?.roll}! Click highlighted tile to move
+            </div>
           ) : (
             <span className="text-xs font-mono text-slate-500 tracking-wider">
               🎮 Round {gameState.round} · {61 - Object.keys(gameState.destroyedTiles).length}/61 tiles · First to 100 DP wins
@@ -555,17 +683,29 @@ export default function GameInterface() {
         </div>
       </header>
 
-      {/* Board row */}
-      <div className="main-board-row flex flex-col lg:flex-row max-w-7xl w-full gap-6 items-stretch mb-4">
+      {/* MAIN CONTAINER */}
+      <div className="flex flex-col lg:flex-row gap-6 w-full max-w-7xl px-4 items-stretch mx-auto relative">
+
+        {/* Head-to-Head Banner (Absolute Top Center) */}
+        {!showSetup && (headToHead.A > 0 || headToHead.B > 0) && (
+          <div className="absolute -top-12 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-slate-900/80 border border-slate-700 shadow-xl backdrop-blur-md flex items-center gap-3">
+            <span className="text-xs font-bold text-blue-400">{playersConfig.A.name} {headToHead.A}</span>
+            <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">— VS —</span>
+            <span className="text-xs font-bold text-orange-400">{headToHead.B} {playersConfig.B.name}</span>
+          </div>
+        )}
+
         {renderPlayerCard('A')}
         <div className="phaser-canvas-panel flex-1 flex justify-center">
           <div
-            ref={phaserContainerRef}
-            className="border-2 border-slate-800/80 rounded-xl shadow-[0_0_35px_rgba(0,0,0,0.4)] bg-slate-950 overflow-hidden relative"
-            style={{ width: '760px', height: '560px' }}
+            className="w-full relative rounded-2xl overflow-hidden shadow-2xl border border-slate-800 bg-[#05070c]"
+            style={{ minHeight: '560px' }}
           >
+            {showSetup && <SetupModal initialConfig={playersConfig} onStart={handleSetupComplete} />}
+            <div ref={phaserContainerRef} className="w-full h-full flex items-center justify-center" />
+            
             {(isAnimating || isWaitingForTileSelection) && (
-              <div className="absolute top-4 right-4 px-4 py-2 rounded-full bg-slate-950/80 border border-slate-800 backdrop-blur-md flex items-center gap-2.5 pointer-events-none shadow-lg">
+              <div className="absolute top-4 right-4 px-4 py-2 rounded-full bg-slate-950/80 border border-slate-800 backdrop-blur-md flex items-center gap-2.5 pointer-events-none shadow-lg z-10">
                 <span className={`w-2 h-2 rounded-full animate-ping ${isWaitingForTileSelection ? 'bg-cyan-400' : 'bg-blue-400'}`} />
                 <span className="text-[10px] text-slate-400 font-mono tracking-wider">
                   {isWaitingForTileSelection ? 'SELECT TILE TO SIT' : 'ANIMATING...'}
@@ -597,11 +737,11 @@ export default function GameInterface() {
             <div className="flex flex-col gap-1.5 font-mono text-[11px] leading-relaxed">
               {gameState.combatLog.map(log => {
                 let cls = 'text-slate-400';
-                if (log.type === 'roll')        cls = 'text-cyan-400';
-                else if (log.type === 'bump')   cls = 'text-rose-400 font-bold';
+                if (log.type === 'roll') cls = 'text-cyan-400';
+                else if (log.type === 'bump') cls = 'text-rose-400 font-bold';
                 else if (log.type === 'collapse') cls = 'text-amber-500';
                 else if (log.type === 'elimination') cls = 'text-red-500 font-semibold';
-                else if (log.type === 'win')    cls = 'text-green-400 font-bold border-t border-b border-green-950/50 py-1 my-1';
+                else if (log.type === 'win') cls = 'text-green-400 font-bold border-t border-b border-green-950/50 py-1 my-1';
                 else if (log.type === 'warning') cls = 'text-amber-400 italic';
                 else if (log.type === 'dp_gain') cls = 'text-emerald-400';
                 else if (log.type === 'dp_loss') cls = 'text-rose-300 italic';

@@ -38,6 +38,7 @@ export class GameScene extends Phaser.Scene {
     // Renders all the hexagons
     this.drawHexagons();
 
+    this.playerColors = { A: 0x00bfff, B: 0xff8c00 };
     // Create player tokens
     this.createPlayers();
 
@@ -45,6 +46,13 @@ export class GameScene extends Phaser.Scene {
     this.game.events.on('ROLL_RESULT', (data) => this.handleRollResult(data));
     this.game.events.on('MOVE_RESULT', (data) => this.handleMoveResult(data));
     this.game.events.on('SYNC_STATE', (data) => this.handleSyncState(data));
+    this.game.events.on('CONFIG_PLAYERS', (colors) => {
+      this.playerColors = colors;
+      this.createPlayers(); // Recreate with new colors
+      if (this.state) {
+        this.handleSyncState(this.state);
+      }
+    });
 
     // Notify React that Phaser is ready
     this.game.events.emit('PHASER_READY');
@@ -211,10 +219,16 @@ export class GameScene extends Phaser.Scene {
 
   // Create player circle tokens
   createPlayers() {
-    // Player A (Blue)
-    const tokenA = this.createTokenContainer(0x00bfff, 'A');
-    // Player B (Orange)
-    const tokenB = this.createTokenContainer(0xff8c00, 'B');
+    // Cleanup old if re-creating
+    if (this.playerTokens) {
+      if (this.playerTokens.A) this.playerTokens.A.destroy();
+      if (this.playerTokens.B) this.playerTokens.B.destroy();
+    }
+
+    // Player A
+    const tokenA = this.createTokenContainer(this.playerColors.A, 'A');
+    // Player B
+    const tokenB = this.createTokenContainer(this.playerColors.B, 'B');
 
     this.playerTokens = { A: tokenA, B: tokenB };
     this.boardContainer.add(tokenA);
@@ -609,6 +623,11 @@ export class GameScene extends Phaser.Scene {
       this.animateDPEvents(animationReport.dpEvents);
     }
 
+    // 3c. Combo Animations
+    if (animationReport.combos && animationReport.combos.length > 0) {
+      await this.animateCombos(animationReport.combos);
+    }
+
     // 4. Play Collapse Animations (if any)
     if (animationReport.collapsedTiles.length > 0) {
       await this.animateCollapse(animationReport);
@@ -623,6 +642,49 @@ export class GameScene extends Phaser.Scene {
 
     this.isAnimating = false;
     this.game.events.emit('ANIMATION_COMPLETE');
+  }
+
+  // Play combo text animations
+  animateCombos(combos) {
+    return new Promise((resolve) => {
+      let timeline = this.tweens.createTimeline();
+      
+      combos.forEach(combo => {
+        const color = this.playerColors[combo.playerId];
+        const comboText = this.add.text(0, 0, `🔥 ${combo.name}!`, {
+          fontFamily: 'Impact, Arial, sans-serif',
+          fontSize: '48px',
+          color: '#ffffff',
+          stroke: `#${color.toString(16).padStart(6, '0')}`,
+          strokeThickness: 8,
+          fontStyle: 'italic',
+          shadow: { fill: true, blur: 15, color: `#${color.toString(16).padStart(6, '0')}`, offsetY: 0, offsetX: 0 }
+        }).setOrigin(0.5).setAlpha(0).setScale(0.5);
+
+        this.boardContainer.add(comboText);
+
+        timeline.add({
+          targets: comboText,
+          alpha: 1,
+          scale: 1.3,
+          duration: 300,
+          ease: 'Back.easeOut',
+          onComplete: () => {
+            this.tweens.add({
+              targets: comboText,
+              alpha: 0,
+              scale: 1.6,
+              delay: 700,
+              duration: 300,
+              onComplete: () => comboText.destroy()
+            });
+          }
+        });
+      });
+
+      timeline.play();
+      timeline.on('complete', () => resolve());
+    });
   }
 
   // Floating rolling numbers effect
